@@ -773,6 +773,8 @@ body.sidebar-open .nav-overlay{
     overflow:visible!important;
   }
 }
+/* Quick Tools is the sole mobile navigation */
+.mobile-nav{display:none!important;visibility:hidden!important;pointer-events:none!important}
 </style>
 </head>
 <body>
@@ -1058,7 +1060,7 @@ body.sidebar-open .nav-overlay{
 </main>
 </div>
 
-<nav class="mobile-nav"><button class="active" onclick="openPage('dashboard')">⌂<br>Home</button><button onclick="openPage('tests')">▣<br>Tests</button><button onclick="openPage('pyq')">⌕<br>PYQ</button><button onclick="openPage('revision')">◆<br>Saved</button><button onclick="openPage('profile')">◯<br>Profile</button></nav>
+
 <div class="toast" id="toast"></div>
 
 
