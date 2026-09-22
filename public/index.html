@@ -833,6 +833,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 </style>
 
 
+<style id="dhyeeya-cbt-v407-fix">
 /* =========================================================
    DHYEYA CBT QUIZ — V4.0.5 PREMIUM EXAM INTERFACE
    ========================================================= */
@@ -924,7 +925,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 #quiz .qdot.current{border:2px solid var(--gold);box-shadow:none;color:var(--gold);font-weight:800}
 #quiz .qdot.done{background:color-mix(in srgb,var(--green) 12%,var(--card));color:var(--green)}
 #quiz .qdot.review{background:color-mix(in srgb,var(--purple) 12%,var(--card));color:var(--purple)}
-#quiz .premium-navigator&gt;.btn.primary{height:44px;border-radius:10px;font-size:12px}
+#quiz .premium-navigator>.btn.primary{height:44px;border-radius:10px;font-size:12px}
 #quiz .timer-critical{animation:none!important}
 #quiz #quizTimer.timer-warn{box-shadow:none}
 #quiz #quizTimer.timer-critical{background:color-mix(in srgb,var(--warm) 16%,var(--card));border-color:var(--warm);color:var(--warm)}
@@ -951,9 +952,9 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
     grid-template-columns:1fr auto 1fr;background:color-mix(in srgb,var(--card) 96%,transparent);
     backdrop-filter:blur(14px);box-shadow:0 -10px 30px rgba(0,0,0,.08)
   }
-  #quiz .quiz-actions-row&gt;.btn:first-child{grid-column:1}
-  #quiz .quiz-actions-row&gt;.btn:nth-child(2),#quiz .quiz-action-cluster{display:none}
-  #quiz .quiz-actions-row&gt;.btn:last-child{grid-column:3}
+  #quiz .quiz-actions-row>.btn:first-child{grid-column:1}
+  #quiz .quiz-actions-row>.btn:nth-child(2),#quiz .quiz-action-cluster{display:none}
+  #quiz .quiz-actions-row>.btn:last-child{grid-column:3}
   #quiz .premium-navigator{position:fixed;right:0;top:0;bottom:0;width:min(340px,92vw);z-index:160;transform:translateX(110%);transition:transform .2s ease;box-shadow:-20px 0 60px rgba(0,0,0,.35);display:block!important}
   #quiz .premium-navigator.mobile-open{transform:translateX(0)}
   #quiz .nav-mobile-close{display:block}
@@ -962,6 +963,8 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 @media(min-width:901px){#quiz .quizNavBtn{display:none}}
 @media(max-width:380px){#quiz .pq-actions #quizModePill{display:none}#quiz .pq-title h1{max-width:155px}}
 
+
+</style>
 </head>
 <body>
 <div class="app">
@@ -1264,7 +1267,7 @@ function closeAccessModal(){
 
 /* Lively light theme palette */
 
-/* Legacy multi-theme palette removed in V4.0.6. Appearance is intentionally limited to Dark / Light. */
+/* Legacy multi-theme palette removed in V4.0.7. Appearance is intentionally limited to Dark / Light. */
 function setAppearance(mode,notify=true){
   mode=(mode==='light')?'light':'dark';
   state.appearance=mode;
@@ -1544,9 +1547,9 @@ if(location.hash==='#tests')openPage('tests');
 <!-- PREMIUM QUIZ MODALS -->
 <div aria-hidden="true" class="modal" id="reviewModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REVIEW</div><h2>Review Attempt</h2><p class="sub">Jump through the selected questions.</p></div><button class="close" onclick="closeModal('reviewModal')" type="button">×</button></div><div class="review-modal-body" id="reviewModalBody"></div></div></div>
 <div aria-hidden="true" class="modal" id="reportModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REPORT</div><h2>Report this question</h2><p class="sub">Your report is saved locally for follow-up.</p></div><button class="close" onclick="closeModal('reportModal')" type="button">×</button></div><div class="report-grid"><button class="btn" onclick="saveQuestionReport('Wrong answer')" type="button">Wrong answer</button><button class="btn" onclick="saveQuestionReport('Incorrect explanation')" type="button">Incorrect explanation</button><button class="btn" onclick="saveQuestionReport('Typo / formatting')" type="button">Typo / formatting</button><button class="btn" onclick="saveQuestionReport('Duplicate')" type="button">Duplicate</button><button class="btn" onclick="saveQuestionReport('Question unclear')" type="button">Question unclear</button><button class="btn" onclick="saveQuestionReport('Other')" type="button">Other</button></div></div></div>
-<script src="/nexus-foundation.js?v=4.0.6"></script>
-<script src="/nexus-v2.js?v=4.0.6"></script>
-<script src="/dhyeeya-v3.js?v=4.0.6"></script>
+<script src="/nexus-foundation.js?v=4.0.7"></script>
+<script src="/nexus-v2.js?v=4.0.7"></script>
+<script src="/dhyeeya-v3.js?v=4.0.7"></script>
 <script id="dhyeeya-v406-interaction-guard">
 (function(){
   function stop(e){e.preventDefault();e.stopImmediatePropagation();}
