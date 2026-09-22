@@ -1,0 +1,26 @@
+{
+  "source_pdf": "Tarkash Annual PYQ Plus English India.pdf",
+  "edition": 2026,
+  "high_confidence_import_records": 541,
+  "held_for_manual_ocr_review": 84,
+  "question_types": {
+    "Statement-based": 81,
+    "MCQ": 412,
+    "Sequence/Chronology": 14,
+    "Assertion-Reason": 15,
+    "Match the Following": 19
+  },
+  "subjects": {
+    "Polity": 58,
+    "Physics": 46,
+    "Chemistry": 50,
+    "Biology": 83,
+    "Ancient History": 25,
+    "Medieval History": 25,
+    "Modern History": 78,
+    "Bihar Special": 55,
+    "Indian and World Geography": 78,
+    "Indian Economy": 43
+  },
+  "notes": "High-confidence records only. Records with unresolved PDF encoding glyphs are quarantined. Source answer blocks without a structurally recoverable question/options/explanation remain excluded rather than guessed."
+}
