@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
-<title>DHYEYA — Premium UI Block</title>
+<title>DHYEYA — BPSC Test Platform</title>
 <style>
 :root{
   --bg:#080a0d;--surface:#101419;--card:#151a20;--card2:#1b2128;
@@ -813,7 +813,7 @@ body[data-appearance="dark"]{background:#080a0d!important}
 body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 @media(max-width:800px){.appearance-toggle{width:40px;height:40px}.top-actions{gap:7px}}
 </style>
-<style id="dhyeeya-v406-production-hardening">
+<style id="dhyeeya-v408-production-hardening">
 #quiz .option{width:100%;display:grid;grid-template-columns:36px minmax(0,1fr);align-items:start;gap:12px;text-align:left;cursor:pointer;}
 #quiz .option:focus-visible,#quiz .btn:focus-visible,#quiz .qdot:focus-visible{outline:3px solid color-mix(in srgb,var(--gold) 45%,transparent);outline-offset:2px;}
 #quiz .option.selected b{background:var(--gold);color:#fff;}
@@ -822,7 +822,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 #quiz .quiz-action-cluster{display:flex;gap:8px;flex-wrap:wrap;}
 @media(max-width:600px){#quiz .quiz-actions-row>.btn{min-height:44px;}#quiz .quiz-action-cluster .btn{min-height:42px;}#quiz .option{min-height:56px;padding:14px 13px;}#quiz .premium-qtop{position:sticky;top:0;z-index:50;}}
 </style>
-<style id="dhyeeya-v403-interaction-fix">
+<style id="dhyeeya-v408-interaction-fix">
 /* V4.0.3 interaction/layering hardening */
 #utilityPanel{z-index:2147482000!important;}
 #utilityBackdrop{z-index:2147481900!important;}
@@ -835,7 +835,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 
 <style id="dhyeeya-cbt-v407-fix">
 /* =========================================================
-   DHYEYA CBT QUIZ — V4.0.5 PREMIUM EXAM INTERFACE
+   DHYEYA CBT QUIZ — V4.0.8 STABLE PRODUCTION INTERFACE
    ========================================================= */
 #quiz.page{max-width:1500px;margin:0 auto}
 #quiz .premium-quiz-head{
@@ -965,6 +965,14 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 
 
 </style>
+<style id="dhyeeya-v408-stability">
+/* V4.0.8 — navigation/render stability */
+.topbar-brand{display:flex;flex-direction:column;gap:2px;line-height:1}.topbar-brand strong{font-size:14px;letter-spacing:.18em;color:var(--text)}.topbar-brand span{font-size:8px;letter-spacing:.18em;color:var(--muted)}
+.content{display:block!important;visibility:visible!important;min-height:calc(100vh - 78px)}
+.page{visibility:visible!important}.page.active{display:block!important;visibility:visible!important;opacity:1!important}
+.utility-item{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+@media(max-width:600px){.topbar-brand strong{font-size:13px}.topbar-brand span{font-size:7px}.content{min-height:calc(100vh - 62px)}}
+</style>
 </head>
 <body>
 <div class="app">
@@ -986,7 +994,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 <header class="topbar">
 <div style="display:flex;align-items:center;gap:12px"><button aria-expanded="false" aria-label="Open tools" class="mobile-menu utility-trigger" id="utilityTrigger" onclick="toggleUtilityHub()" type="button">
 <span class="hub-icon">☰</span>
-</button><div><div class="eyebrow" id="pageEyebrow">Student Dashboard</div><div id="pageTitle" style="font-weight:700">Overview</div></div></div>
+</button><div class="topbar-brand" aria-label="DHYEYA"><strong>DHYEYA</strong><span>BPSC PRELIMS</span></div></div>
 <div class="top-actions">
 <button aria-label="Switch to light mode" class="appearance-toggle" id="appearanceToggle" title="Switch to light mode" type="button">☾</button>
 <div class="avatar">P</div>
@@ -1029,7 +1037,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 <button class="utility-item wide" onclick="toast('No new notifications');closeUtilityHub()" type="button">
 <span class="uicon">♢</span><span><b>Notifications</b><small>Everything is up to date</small></span>
 </button>
-<button class="utility-item wide" onclick="toast('Logout integration will connect to your server');closeUtilityHub()" style="border-color:rgba(224,91,97,.20)" type="button">
+<button class="utility-item wide" onclick="fetch('/api/auth/logout',{method:'POST',credentials:'include'}).finally(()=>location.reload())" style="border-color:rgba(224,91,97,.20)" type="button">
 <span class="uicon" style="color:#f38b90">↪</span><span><b>Logout</b><small>Sign out securely</small></span>
 </button>
 </div>
@@ -1057,7 +1065,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 <div class="modalhead"><div><div class="eyebrow">SETTINGS</div><h2 style="margin:5px 0">Preferences</h2></div><button class="close" onclick="closeModal('settingsModal')" type="button">×</button></div>
 <div class="task"><span>Sound effects</span><button class="btn" id="soundToggle" onclick="toggleSound()" type="button">On</button></div>
 <div class="task"><span>Auto-save</span><button class="btn" id="autosaveToggle" onclick="toggleAutosave()" type="button">On</button></div>
-<div class="task"><span>Reset demo data</span><button class="btn danger" onclick="resetDemo()" type="button">Reset</button></div>
+
 </div>
 </div>
 <!-- DASHBOARD -->
@@ -1319,19 +1327,31 @@ function closeUtilityHub(){
   if(trigger){trigger.classList.remove('open');trigger.setAttribute('aria-expanded','false');}
   document.body.classList.remove('sidebar-open');
 }
-function utilityGo(id){closeUtilityHub();openPage(id)}
-
+function utilityGo(id){
+  closeUtilityHub();
+  openPage(id);
+}
 function openPage(id){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  const p=document.getElementById(id); if(p)p.classList.add('active');
-  const t=titles[id]||['DHYEYA',''];
-  document.getElementById('pageEyebrow').textContent=t[0];
-  document.getElementById('pageTitle').textContent=t[1];
-  document.querySelectorAll('.nav button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
-  window.scrollTo({top:0,behavior:'smooth'});
-  if(id==='revision')renderRevision();
-  if(id==='performance')renderPerformance();
-  if(id==='planner')renderPlanner();
+  const requested=String(id||'dashboard');
+  const target=document.getElementById(requested) || document.getElementById('dashboard');
+  const activeId=target?.id || 'dashboard';
+  document.querySelectorAll('.page').forEach(p=>{p.classList.remove('active');p.removeAttribute('aria-hidden');p.style.removeProperty('display');});
+  if(target){target.classList.add('active');target.style.display='block';target.setAttribute('aria-hidden','false');}
+  document.body.classList.remove('sidebar-open');
+  document.querySelector('.app')?.style.removeProperty('display');
+  const t=titles[activeId]||['DHYEYA',''];
+  const eyebrow=document.getElementById('pageEyebrow');
+  const pageTitle=document.getElementById('pageTitle');
+  if(eyebrow)eyebrow.textContent=t[0];
+  if(pageTitle)pageTitle.textContent=t[1];
+  document.querySelectorAll('.nav button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===activeId));
+  try{window.scrollTo({top:0,behavior:'smooth'});}catch(e){window.scrollTo(0,0);}
+  try{
+    if(activeId==='revision')renderRevision();
+    if(activeId==='performance')renderPerformance();
+    if(activeId==='planner')renderPlanner();
+  }catch(e){console.error('DHYEYA page render:',activeId,e);}
+  return activeId;
 }
 function openModal(id){const x=document.getElementById(id);if(x){x.classList.add('show');x.setAttribute('aria-hidden','false')}}
 function closeModal(id){const x=document.getElementById(id);if(x){x.classList.remove('show');x.setAttribute('aria-hidden','true')}}
@@ -1492,7 +1512,6 @@ function institutionOpen(name){
 
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
-document.querySelectorAll('.nav button[data-page]').forEach(b=>b.addEventListener('click',()=>openPage(b.dataset.page)));
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{t.parentElement.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active')}));
 window.addEventListener('beforeunload',()=>{if(quiz.questions.length)saveResume()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&quiz.questions.length)saveResume()});
@@ -1547,36 +1566,28 @@ if(location.hash==='#tests')openPage('tests');
 <!-- PREMIUM QUIZ MODALS -->
 <div aria-hidden="true" class="modal" id="reviewModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REVIEW</div><h2>Review Attempt</h2><p class="sub">Jump through the selected questions.</p></div><button class="close" onclick="closeModal('reviewModal')" type="button">×</button></div><div class="review-modal-body" id="reviewModalBody"></div></div></div>
 <div aria-hidden="true" class="modal" id="reportModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REPORT</div><h2>Report this question</h2><p class="sub">Your report is saved locally for follow-up.</p></div><button class="close" onclick="closeModal('reportModal')" type="button">×</button></div><div class="report-grid"><button class="btn" onclick="saveQuestionReport('Wrong answer')" type="button">Wrong answer</button><button class="btn" onclick="saveQuestionReport('Incorrect explanation')" type="button">Incorrect explanation</button><button class="btn" onclick="saveQuestionReport('Typo / formatting')" type="button">Typo / formatting</button><button class="btn" onclick="saveQuestionReport('Duplicate')" type="button">Duplicate</button><button class="btn" onclick="saveQuestionReport('Question unclear')" type="button">Question unclear</button><button class="btn" onclick="saveQuestionReport('Other')" type="button">Other</button></div></div></div>
-<script src="/nexus-foundation.js?v=4.0.7"></script>
-<script src="/nexus-v2.js?v=4.0.7"></script>
-<script src="/dhyeeya-v3.js?v=4.0.7"></script>
-<script id="dhyeeya-v406-interaction-guard">
+<script src="/nexus-foundation.js?v=4.0.8"></script>
+<script src="/nexus-v2.js?v=4.0.8"></script>
+<script src="/dhyeeya-v3.js?v=4.0.8"></script>
+<script id="dhyeeya-v408-navigation-guard">
 (function(){
-  function stop(e){e.preventDefault();e.stopImmediatePropagation();}
-  function runNav(btn){var id=btn&&btn.getAttribute('data-page');if(!id)return;stop(window.event||{preventDefault:function(){},stopImmediatePropagation:function(){}});if(window.closeUtilityHub)window.closeUtilityHub();if(typeof window.openPage==='function')window.openPage(id);}
+  function recover(){
+    const app=document.querySelector('.app');const content=document.querySelector('.content');
+    if(app)app.style.removeProperty('display');
+    if(content){content.style.display='block';content.style.visibility='visible';}
+  }
   document.addEventListener('click',function(e){
-    var el=e.target&&e.target.closest?e.target.closest('[data-page]'):null;
-    if(el && el.closest('.nav')){e.preventDefault();e.stopImmediatePropagation();if(window.closeUtilityHub)window.closeUtilityHub();if(typeof window.openPage==='function')window.openPage(el.dataset.page);return;}
-    var util=e.target&&e.target.closest?e.target.closest('.utility-item[data-page],.utility-item'):null;
-    if(util && util.closest('#utilityPanel')){
-            var text=(util.textContent||'').trim();
-      var map={Home:'dashboard',Tests:'tests',PYQ:'pyq',Saved:'revision',Progress:'performance',Planner:'planner',Leaderboard:'leaderboard',Profile:'profile'};
-      var id=util.dataset.page||Object.keys(map).find(function(k){return text.indexOf(k)>=0;});
-      if(id){e.preventDefault();e.stopImmediatePropagation();if(window.closeUtilityHub)window.closeUtilityHub();if(typeof window.openPage==='function')window.openPage(id);return;}
-    }
-  },true);
-  document.addEventListener('DOMContentLoaded',function(){
-    document.querySelectorAll('.nav button[data-page],#utilityTrigger,.utility-item,#appearanceToggle').forEach(function(b){if(b.tagName==='BUTTON')b.type='button';});
-    var ab=document.getElementById('appearanceToggle');if(ab){ab.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();toggleAppearance();});}
-    setAppearance(state.appearance||'dark',false);
-    document.addEventListener('keydown',function(e){
-      if(e.key==='Escape'){
-        if(typeof closeQuizNavigator==='function')closeQuizNavigator();
-        ['modeModal','submitModal','reviewModal','reportModal','accessModal'].forEach(function(id){if(typeof closeModal==='function')closeModal(id);});
-        if(typeof closeUtilityHub==='function')closeUtilityHub();
-      }
-    });
+    const nav=e.target?.closest?.('.nav button[data-page]');
+    if(nav){e.preventDefault();closeUtilityHub();recover();openPage(nav.dataset.page);return;}
   });
+  document.addEventListener('DOMContentLoaded',function(){
+    document.querySelectorAll('button').forEach(b=>{if(!b.type)b.type='button';});
+    const ab=document.getElementById('appearanceToggle');
+    if(ab&&!ab.dataset.bound){ab.dataset.bound='1';ab.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggleAppearance();});}
+    setAppearance(state.appearance||'dark',false);
+    recover();
+  });
+  window.addEventListener('error',function(){recover();});
 })();
 </script>
 </body>
