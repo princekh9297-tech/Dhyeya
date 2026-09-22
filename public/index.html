@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>BPSC PRELIMS NEXUS — Premium UI Block</title>
+<title>DHYEYA — Premium UI Block</title>
 <style>
 :root{
   --bg:#080a0d;--surface:#101419;--card:#151a20;--card2:#1b2128;
@@ -778,7 +778,7 @@ body.sidebar-open .nav-overlay{
 <body>
 <div class="app">
 <aside class="sidebar">
-  <div class="brand"><div class="brandmark">N</div><div><b>BPSC NEXUS</b><span>PRELIMS</span></div></div>
+  <div class="brand"><div class="brandmark">N</div><div><b>DHYEYA</b><span>BPSC PRELIMS</span></div></div>
   <nav class="nav">
     <button class="active" data-page="dashboard"><span class="ico">⌂</span>Dashboard</button>
     <button data-page="tests"><span class="ico">▣</span>Test Series</button>
@@ -882,7 +882,7 @@ body.sidebar-open .nav-overlay{
 
 <!-- DASHBOARD -->
 <div id="dashboard" class="page active">
-  <div class="hero"><div class="hero-row"><div><div class="eyebrow">BPSC PRELIMS NEXUS</div><h1>Good evening, <span class="gold">Student.</span></h1><p class="sub">Your preparation space — focused, measurable and distraction-free.</p></div><button class="btn primary" onclick="openPage('tests')">Explore Tests →</button></div></div>
+  <div class="hero"><div class="hero-row"><div><div class="eyebrow">DHYEYA</div><h1>Good evening, <span class="gold">Student.</span></h1><p class="sub">Your preparation space — focused, measurable and distraction-free.</p></div><button class="btn primary" onclick="openPage('tests')">Explore Tests →</button></div></div>
   <div class="grid stats">
     <div class="stat"><div class="label">Tests Attempted</div><div class="num">—</div><div class="delta">Connect data later</div></div>
     <div class="stat"><div class="label">Average Score</div><div class="num">—</div><div class="delta">Awaiting attempts</div></div>
@@ -966,7 +966,7 @@ body.sidebar-open .nav-overlay{
   <div class="pyq-feature">
     <div class="pyq-top">BPSC PYQ ARCHIVE</div>
     <h2>BPSC PYQ ARCHIVE</h2>
-    <p>18 supplied BPSC PYQ papers, kept year/paper-wise and available natively inside BPSC NEXUS in Practice and Exam Mode. English-only interface • source-PDF questions • source-solution explanations.</p>
+    <p>18 supplied BPSC PYQ papers, kept year/paper-wise and available natively inside DHYEYA in Practice and Exam Mode. English-only interface • source-PDF questions • source-solution explanations.</p>
     <div class="pyq-row">
       <div class="pyq-stats">
         <div class="pyq-stat"><strong>18</strong><span>PYQ Papers</span></div>
@@ -1272,7 +1272,7 @@ function utilityGo(id){closeUtilityHub();openPage(id)}
 function openPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   const p=document.getElementById(id); if(p)p.classList.add('active');
-  const t=titles[id]||['BPSC Nexus',''];
+  const t=titles[id]||['DHYEYA',''];
   document.getElementById('pageEyebrow').textContent=t[0];
   document.getElementById('pageTitle').textContent=t[1];
   document.querySelectorAll('.nav button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
@@ -1448,7 +1448,7 @@ if(location.hash==='#tests')openPage('tests');
 <div id="accessModal" class="access-modal" aria-hidden="true">
   <div class="access-card">
     <button class="access-close" onclick="closeAccessModal()" aria-label="Close">×</button>
-    <div class="access-kicker">BPSC PRELIMS NEXUS</div>
+    <div class="access-kicker">DHYEYA</div>
     <h2 class="access-title">Get Full Access for <span class="price">₹199</span></h2>
     <div class="access-subtitle">Complete BPSC Prelims Test Series</div>
 
@@ -1475,7 +1475,7 @@ if(location.hash==='#tests')openPage('tests');
       </a>
     </div>
 
-    <div class="access-footer">BPSC Prelims Nexus · Built for focused preparation</div>
+    <div class="access-footer">DHYEYA · Built for focused preparation</div>
   </div>
 </div>
 
@@ -1497,6 +1497,7 @@ if(location.hash==='#tests')openPage('tests');
 
 <script src="/nexus-foundation.js"></script>
 <script src="/nexus-v2.js"></script>
+<script src="/dhyeeya-v3.js"></script>
 </body>
 </html>
 document.addEventListener('DOMContentLoaded',()=>{
