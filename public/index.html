@@ -775,9 +775,14 @@ body.sidebar-open .nav-overlay{
 }
 /* Quick Tools is the sole mobile navigation */
 .mobile-nav{display:none!important;visibility:hidden!important;pointer-events:none!important}
+\n/* =========================================================\n   DHYEYA PREMIUM WORLD THEME ENGINE + TEST EXPERIENCE\n   ========================================================= */\nhtml{background:var(--bg)}\nbody{background:var(--bg);transition:background .45s ease,color .35s ease;font-family:var(--theme-font,Inter),ui-sans-serif,system-ui,sans-serif}\n#themeWorld{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;opacity:1;transition:opacity .45s ease}\n#themeWorld:before,#themeWorld:after{content:"";position:absolute;inset:-18%;background-repeat:no-repeat;transition:all .6s ease}\nbody>*:not(#themeWorld){position:relative;z-index:1}\nbody[data-nexus-theme="fire"] #themeWorld:before{background:radial-gradient(circle at 15% 90%,rgba(255,61,15,.34),transparent 28%),radial-gradient(circle at 85% 10%,rgba(255,155,35,.23),transparent 24%),radial-gradient(circle at 55% 55%,rgba(255,64,26,.12),transparent 38%);filter:blur(12px)}\nbody[data-nexus-theme="fire"] #themeWorld:after{background-image:radial-gradient(circle,rgba(255,177,78,.72) 0 1px,transparent 2px);background-size:130px 130px;opacity:.22;animation:worldDrift 18s linear infinite}\nbody[data-nexus-theme="ice"] #themeWorld:before{background:radial-gradient(circle at 15% 20%,rgba(76,214,255,.28),transparent 30%),radial-gradient(circle at 85% 80%,rgba(66,125,255,.25),transparent 32%),linear-gradient(120deg,transparent 0 45%,rgba(196,250,255,.08) 46% 47%,transparent 48%)}\nbody[data-nexus-theme="ice"] #themeWorld:after{background-image:linear-gradient(135deg,rgba(190,247,255,.16) 1px,transparent 1px);background-size:70px 70px;opacity:.22;transform:rotate(6deg)}\nbody[data-nexus-theme="space"] #themeWorld:before{background:radial-gradient(circle at 20% 30%,rgba(122,67,255,.30),transparent 30%),radial-gradient(circle at 80% 70%,rgba(43,180,255,.22),transparent 30%),radial-gradient(circle at 50% 10%,rgba(255,70,210,.12),transparent 22%);filter:blur(18px)}\nbody[data-nexus-theme="space"] #themeWorld:after{background-image:radial-gradient(circle,rgba(255,255,255,.85) 0 1px,transparent 1.5px);background-size:97px 97px;opacity:.35;animation:worldDrift 30s linear infinite}\nbody[data-nexus-theme="game"] #themeWorld:before{background:linear-gradient(rgba(57,255,154,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(99,231,255,.035) 1px,transparent 1px),radial-gradient(circle at 50% 10%,rgba(57,255,154,.16),transparent 35%);background-size:34px 34px,34px 34px,100% 100%;}\nbody[data-nexus-theme="game"] #themeWorld:after{background:linear-gradient(90deg,transparent,rgba(57,255,154,.08),transparent);transform:skewX(-20deg);animation:hudSweep 5s ease-in-out infinite}\nbody[data-nexus-theme="study"] #themeWorld:before{background:radial-gradient(circle at 85% 5%,rgba(190,144,73,.13),transparent 30%),linear-gradient(90deg,rgba(105,76,42,.035) 1px,transparent 1px),linear-gradient(rgba(105,76,42,.025) 1px,transparent 1px);background-size:auto,36px 36px,36px 36px}\nbody[data-nexus-theme="study"] #themeWorld:after{background:radial-gradient(ellipse at 20% 90%,rgba(131,87,43,.10),transparent 35%);filter:blur(25px)}\nbody[data-nexus-theme="arghya"] #themeWorld:before{background:radial-gradient(circle at 50% -5%,rgba(255,205,92,.22),transparent 28%),radial-gradient(circle at 0% 100%,rgba(217,164,65,.16),transparent 28%),linear-gradient(90deg,transparent 49.7%,rgba(217,164,65,.05) 50%,transparent 50.3%)}\nbody[data-nexus-theme="arghya"] #themeWorld:after{background-image:linear-gradient(45deg,rgba(217,164,65,.05) 25%,transparent 25%,transparent 75%,rgba(217,164,65,.05) 75%);background-size:84px 84px;opacity:.25}\n@keyframes worldDrift{from{transform:translate3d(0,0,0)}to{transform:translate3d(90px,60px,0)}}\n@keyframes hudSweep{0%,100%{opacity:0;transform:translateX(-70%) skewX(-20deg)}45%,55%{opacity:1;transform:translateX(70%) skewX(-20deg)}}\n\n/* Theme-aware shell */\n.sidebar{background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 96%,black),color-mix(in srgb,var(--bg) 92%,black));box-shadow:var(--theme-shadow)}\n.topbar{background:color-mix(in srgb,var(--bg) 78%,transparent);border-color:var(--line)}\n.hero{background:radial-gradient(circle at 85% 0,color-mix(in srgb,var(--gold) 20%,transparent),transparent 35%),linear-gradient(135deg,color-mix(in srgb,var(--card) 96%,transparent),color-mix(in srgb,var(--bg) 92%,transparent));box-shadow:var(--theme-shadow)}\n.card,.stat,.test-card,.pyq-live-card,.quiz-shell,.navigator,.premium-modal,.theme-box{background:color-mix(in srgb,var(--card) 93%,transparent);border-color:var(--line);box-shadow:0 18px 55px color-mix(in srgb,var(--gold) 6%,transparent)}\n.btn{background:color-mix(in srgb,var(--card2) 88%,transparent);border-color:var(--line);transition:transform .16s ease,box-shadow .2s ease,border-color .2s ease,background .2s ease}.btn:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--gold) 65%,var(--line));box-shadow:0 10px 30px color-mix(in srgb,var(--gold) 12%,transparent)}.btn.primary{background:linear-gradient(135deg,var(--gold),var(--gold2));box-shadow:0 10px 28px color-mix(in srgb,var(--gold) 22%,transparent)}\n.nav button:hover,.nav button.active{background:color-mix(in srgb,var(--gold) 10%,var(--card));color:var(--text)}\n\n/* Premium quiz */\n.premium-quiz-head{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:10px;padding:18px 22px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(135deg,color-mix(in srgb,var(--card) 94%,transparent),color-mix(in srgb,var(--bg) 82%,transparent));box-shadow:var(--theme-shadow);backdrop-filter:blur(18px)}\n.pq-title h1{margin:4px 0 4px;font-size:25px;letter-spacing:-.035em}.pq-meta{display:flex;gap:7px;align-items:center;color:var(--muted);font-size:11px}.pq-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.quiz-progress{height:5px;background:color-mix(in srgb,var(--line) 90%,transparent);border-radius:999px;overflow:hidden;margin:0 4px 12px}.quiz-progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--gold2));box-shadow:0 0 18px color-mix(in srgb,var(--gold) 55%,transparent);transition:width .25s ease}.premium-quiz-shell{grid-template-columns:minmax(0,1fr) 290px;min-height:690px}.premium-qtop{position:sticky;top:70px;z-index:5;padding:12px 0;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(15px)}.qstatus{display:flex;gap:7px}.quiz-main{padding:26px}.question-placeholder{border-style:solid;border-color:var(--line);background:color-mix(in srgb,var(--card) 75%,transparent);box-shadow:0 16px 40px color-mix(in srgb,var(--gold) 5%,transparent)}\n#questionArea h2{font-size:24px!important;line-height:1.5!important;letter-spacing:-.018em!important}.options{max-width:920px}.option{min-height:58px;padding:16px 18px;border-radius:16px;background:color-mix(in srgb,var(--card2) 90%,transparent);color:var(--text);border-color:var(--line);font-size:16px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.05);transition:transform .14s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}.option:hover{transform:translateX(2px);border-color:color-mix(in srgb,var(--gold) 60%,var(--line));background:color-mix(in srgb,var(--gold) 7%,var(--card2))}.option.selected{border-color:var(--gold);background:linear-gradient(90deg,color-mix(in srgb,var(--gold) 16%,var(--card2)),color-mix(in srgb,var(--gold2) 5%,var(--card2)));box-shadow:0 0 0 2px color-mix(in srgb,var(--gold) 15%,transparent),0 12px 30px color-mix(in srgb,var(--gold) 11%,transparent);transform:translateX(3px)}.option b{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:9px;background:color-mix(in srgb,var(--gold) 12%,var(--card));color:var(--gold2)}.not-attempted-option{border-style:dashed;color:var(--muted)}\n.quiz-actions-row{display:flex;align-items:center;justify-content:space-between;gap:8px;max-width:920px;margin:22px auto 0;flex-wrap:wrap}.quiz-action-cluster{display:flex;gap:7px;flex-wrap:wrap}.premium-navigator{background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(18px);padding:22px;border-left-color:var(--line)}.nav-head{display:flex;justify-content:space-between;gap:10px}.nav-head h3{margin:0 0 4px}.nav-mobile-close{display:none;border:0;background:none;color:var(--muted);font-size:24px}.nav-legend{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:15px 0;font-size:10px;color:var(--muted)}.nav-legend span{display:flex;align-items:center;gap:6px}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--line)}.dot.answered{background:var(--green)}.dot.review{background:var(--purple)}.dot.empty{border:1px solid var(--muted)}.qgrid{grid-template-columns:repeat(5,1fr);gap:7px;max-height:470px;overflow:auto;padding-right:3px}.qdot{background:color-mix(in srgb,var(--card2) 88%,transparent);border-color:var(--line);transition:.15s}.qdot:hover{transform:scale(1.05);border-color:var(--gold)}.qdot.done{background:color-mix(in srgb,var(--green) 18%,var(--card));color:var(--green);border-color:color-mix(in srgb,var(--green) 30%,var(--line))}.qdot.review{background:color-mix(in srgb,var(--purple) 20%,var(--card));color:var(--purple)}.qdot.current{box-shadow:0 0 0 2px color-mix(in srgb,var(--gold) 22%,transparent)}\n#quizTimer.timer-warn{color:var(--warm);background:color-mix(in srgb,var(--warm) 14%,var(--card));border-color:color-mix(in srgb,var(--warm) 35%,var(--line));animation:timerPulse 1s infinite}.quiz-fullscreen .sidebar,.quiz-fullscreen .topbar,.quiz-fullscreen .utility-trigger{display:none!important}.quiz-fullscreen .main{grid-column:1}.quiz-fullscreen .content{max-width:1500px;padding:14px 18px}.quiz-fullscreen .premium-quiz-shell{min-height:calc(100vh - 145px)}\n@keyframes timerPulse{50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--warm) 8%,transparent)}}\n\n/* Result */\n.result-hero{padding:34px;text-align:center}.result-score-grid{display:grid;grid-template-columns:220px 1fr;gap:24px;max-width:900px;margin:15px auto 0;align-items:center;text-align:left}.result-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.result-metrics .stat{text-align:center}.result-score-caption{text-align:center;color:var(--muted);font-size:12px}.result-actions{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;margin-top:22px}.result-detail-grid{grid-template-columns:1.4fr 1fr;margin-top:16px}.result-review-card{margin-top:16px}.result-review-row{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}.result-review-row:last-child{border-bottom:0}.result-mini-bar{height:7px;background:color-mix(in srgb,var(--line) 90%,transparent);border-radius:99px;overflow:hidden;margin-top:7px}.result-mini-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:99px}.review-modal-body{max-height:65vh;overflow:auto}.report-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:16px}\n\n/* Theme studio */\n.theme-modal{background:rgba(2,4,8,.68);backdrop-filter:blur(18px)}.theme-box{width:min(1050px,96vw);max-height:88vh;overflow:auto;border-radius:28px;padding:24px}.theme-head{display:flex;justify-content:space-between;gap:15px}.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}.theme-card{min-height:210px;background:color-mix(in srgb,var(--card) 92%,transparent);border:1px solid var(--line);color:var(--text);box-shadow:0 12px 35px rgba(0,0,0,.15)}.theme-preview{height:105px;border-radius:14px;position:relative;overflow:hidden;background:#111}.theme-preview:after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 30%,rgba(255,255,255,.12),transparent 65%)}.theme-preview .p1,.theme-preview .p2,.theme-preview .p3,.theme-preview .p4{position:absolute;border-radius:50%;filter:blur(1px)}.theme-preview .p1{width:85px;height:85px;left:-15px;bottom:-25px}.theme-preview .p2{width:75px;height:75px;right:20px;top:-20px}.theme-preview .p3{width:48px;height:48px;right:-10px;bottom:12px}.theme-preview .p4{width:35px;height:35px;left:50%;top:30%;opacity:.9}.theme-name{font-weight:800;margin-top:12px;letter-spacing:.06em}.theme-desc{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.45}.theme-swatch{display:flex;gap:6px;margin-top:10px}.theme-swatch i{width:24px;height:6px;border-radius:99px}.theme-check{background:var(--theme-accent);color:#fff}\n\n@media(max-width:900px){.premium-quiz-head{align-items:flex-start;flex-direction:column}.pq-actions{width:100%;justify-content:flex-start}.premium-quiz-shell{grid-template-columns:1fr}.premium-navigator{position:fixed;right:0;top:0;bottom:0;width:min(360px,92vw);z-index:160;transform:translateX(110%);transition:transform .25s ease;box-shadow:-20px 0 70px rgba(0,0,0,.45);display:block!important}.premium-navigator.mobile-open{transform:translateX(0)}.nav-mobile-close{display:block}.quiz-nav-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:159;display:none}.quiz-nav-overlay.show{display:block}.result-score-grid{grid-template-columns:1fr}.result-metrics{grid-template-columns:repeat(2,1fr)}.result-detail-grid{grid-template-columns:1fr}.theme-grid{grid-template-columns:repeat(2,1fr)}}\n@media(max-width:600px){.premium-quiz-head{padding:15px}.pq-title h1{font-size:21px}.pq-actions .btn{padding:9px 10px}.quiz-main{padding:15px}.premium-qtop{top:0}.quiz-actions-row{position:sticky;bottom:0;z-index:25;background:color-mix(in srgb,var(--card) 94%,transparent);padding:10px 0;margin-left:-15px;margin-right:-15px;padding-left:10px;padding-right:10px;backdrop-filter:blur(18px);border-top:1px solid var(--line)}.quiz-action-cluster{order:3;width:100%;justify-content:center}.quiz-actions-row>.btn:last-child{margin-left:auto}.option{font-size:15px}.result-hero{padding:22px 15px}.theme-grid{grid-template-columns:1fr}.report-grid{grid-template-columns:1fr}}\n
+
+.question-source-line{font-size:10px;color:var(--muted);letter-spacing:.04em;margin-top:7px}.submit-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.submit-stat-grid>div{padding:14px;border:1px solid var(--line);border-radius:13px;background:color-mix(in srgb,var(--gold) 5%,var(--card));text-align:center}.submit-stat-grid b{display:block;font-size:20px;color:var(--gold2)}.submit-stat-grid span{font-size:10px;color:var(--muted)}.practice-feedback.neutral{display:block;background:color-mix(in srgb,var(--purple) 10%,var(--card));border-color:color-mix(in srgb,var(--purple) 30%,var(--line));color:var(--text)}.timer-critical{animation:timerPulse .55s infinite!important}@media(max-width:600px){.submit-stat-grid{grid-template-columns:repeat(2,1fr)}}
+
 </style>
 </head>
 <body>
+<div id="themeWorld" aria-hidden="true"></div>
 <div class="app">
 <aside class="sidebar">
   <div class="brand"><div class="brandmark">N</div><div><b>DHYEYA</b><span>BPSC PRELIMS</span></div></div>
@@ -1034,13 +1039,29 @@ body.sidebar-open .nav-overlay{
 
 <!-- QUIZ -->
 <div id="quiz" class="page">
-  <div class="hero" style="padding:20px"><div class="hero-row"><div><div class="eyebrow">FOCUS TEST INTERFACE</div><h1 style="font-size:25px">Test Placeholder</h1><p class="sub">Questions will be inserted later.</p></div><div><span class="pill gold">Exam Mode</span> <span class="pill">00:00:00</span></div></div></div>
-  <div class="quiz-shell"><div class="quiz-main"><div class="quiz-top"><span id="qNum" class="qnum">QUESTION 1 OF 5</span><span id="quizModePill" class="pill gold">Practice Mode</span><span id="quizTimer" class="pill">No Timer</span></div><div id="questionArea" class="question-placeholder"><strong>Loading…</strong>Please wait.</div><div id="options" class="options"></div><div id="feedback" class="practice-feedback"></div><div class="quiz-bottom"><button class="btn" onclick="prevQuestion()">← Previous</button><div style="display:flex;gap:8px"><button id="bookmarkBtn" class="btn" onclick="toggleBookmark()">🔖 Bookmark</button><button id="reviewBtn" class="btn" onclick="toggleReview()">Mark Review</button></div><button class="btn primary" onclick="nextQuestion()">Save & Next →</button></div></div><aside class="navigator"><h3>Question Navigator</h3><p class="sub">Placeholder</p><div id="qgrid" class="qgrid"></div><button class="btn" style="width:100%;margin-top:15px" onclick="openSubmitModal()">Submit Test</button></aside></div>
+  <div class="premium-quiz-head">
+    <div class="pq-title"><div class="eyebrow">FOCUS TEST ENGINE</div><h1 id="quizTestTitle">BPSC Test</h1><div class="pq-meta"><span id="quizSubjectMeta">All Subjects</span><span>•</span><span id="quizProgressText">0%</span><span>•</span><span id="quizSaveState">✓ Auto-saved</span></div></div>
+    <div class="pq-actions"><button class="btn" id="focusModeBtn" type="button" onclick="toggleFocusMode()">⛶ Focus</button><button class="btn" id="quizNavBtn" type="button" onclick="openQuizNavigator()">☷ Navigator</button><span id="quizModePill" class="pill gold">Practice Mode</span><span id="quizTimer" class="pill">No Timer</span></div>
+  </div>
+  <div class="quiz-progress"><i id="quizProgressBar"></i></div>
+  <div class="quiz-shell premium-quiz-shell">
+    <div class="quiz-main">
+      <div class="quiz-top premium-qtop"><span id="qNum" class="qnum">QUESTION 1 OF 5</span><div class="qstatus"><span id="qAnsweredStatus" class="pill">0 Answered</span><span id="qReviewStatus" class="pill violet">0 Review</span></div></div>
+      <div id="questionArea" class="question-placeholder"><strong>Loading…</strong>Please wait.</div>
+      <div id="options" class="options"></div>
+      <div id="feedback" class="practice-feedback"></div>
+      <div class="quiz-actions-row"><button class="btn" type="button" onclick="prevQuestion()">← Previous</button><button class="btn" type="button" onclick="clearResponse()">Clear Response</button><div class="quiz-action-cluster"><button id="bookmarkBtn" class="btn" type="button" onclick="toggleBookmark()">🔖 Bookmark</button><button id="reviewBtn" class="btn" type="button" onclick="toggleReview()">Mark Review</button><button id="reportBtn" class="btn" type="button" onclick="reportCurrentQuestion()">⚠ Report</button></div><button class="btn primary" type="button" onclick="nextQuestion()">Save & Next →</button></div>
+    </div>
+    <aside class="navigator premium-navigator"><div class="nav-head"><div><h3>Question Navigator</h3><p class="sub">Jump, review and track progress.</p></div><button class="nav-mobile-close" type="button" onclick="closeQuizNavigator()">×</button></div><div class="nav-legend"><span><i class="dot answered"></i>Answered</span><span><i class="dot review"></i>Review</span><span><i class="dot empty"></i>Unanswered</span></div><div id="qgrid" class="qgrid"></div><button class="btn primary" style="width:100%;margin-top:15px" onclick="openSubmitModal()">Submit Test</button></aside>
+  </div>
 </div>
+<div id="quizNavOverlay" class="quiz-nav-overlay" onclick="closeQuizNavigator()"></div>
 
 <!-- RESULT -->
 <div id="result" class="page">
-  <div class="card result"><div class="eyebrow">TEST SUBMITTED</div><h1>Analysis awaits.</h1><p class="sub">Actual score data will be calculated from the connected test engine.</p><div class="score-ring">—</div><div class="grid stats" style="max-width:800px;margin:20px auto"><div class="stat"><div class="label">Correct</div><div class="num">—</div></div><div class="stat"><div class="label">Incorrect</div><div class="num">—</div></div><div class="stat"><div class="label">Unattempted</div><div class="num">—</div></div><div class="stat"><div class="label">Time</div><div class="num">—</div></div></div><button class="btn primary" onclick="openPage('performance')">View Performance →</button></div>
+  <div class="result-hero card"><div class="eyebrow">TEST SUBMITTED</div><h1>Performance Report</h1><p id="resultSubtitle" class="sub">Your attempt has been analyzed.</p><div class="result-score-grid"><div><div class="score-ring">—</div><div class="result-score-caption">Overall Score</div></div><div class="result-metrics"><div class="stat"><div class="label">Correct</div><div id="resultCorrect" class="num">—</div></div><div class="stat"><div class="label">Incorrect</div><div id="resultIncorrect" class="num">—</div></div><div class="stat"><div class="label">Unattempted</div><div id="resultUnanswered" class="num">—</div></div><div class="stat"><div class="label">No Valid Answer</div><div id="resultNoValid" class="num">—</div></div></div></div><div class="result-actions"><button class="btn primary" type="button" onclick="reviewResult('wrong')">Review Wrong</button><button class="btn" type="button" onclick="reviewResult('all')">Review All</button><button class="btn" type="button" onclick="retryWrongQuestions()">↻ Retry Wrong</button><button class="btn" type="button" onclick="openPage('performance')">View Performance →</button></div></div>
+  <div class="grid result-detail-grid"><div class="card"><div class="section-head"><div><h3>Subject Performance</h3><p class="sub">Accuracy by subject.</p></div></div><div id="resultSubjects"></div></div><div class="card"><div class="section-head"><div><h3>Attempt Summary</h3><p class="sub">Time and response behaviour.</p></div></div><div id="resultTiming"></div></div></div>
+  <div class="card result-review-card"><div class="section-head"><div><h3>Question Review</h3><p class="sub">Filter your attempt and revise weak questions.</p></div><div class="tabs"><button class="tab active" onclick="reviewResult('all')">All</button><button class="tab" onclick="reviewResult('wrong')">Wrong</button><button class="tab" onclick="reviewResult('unanswered')">Unattempted</button></div></div><div id="resultQuestionReview"></div></div>
 </div>
 
 </section>
@@ -1098,69 +1119,12 @@ function closeAccessModal(){
 /* Lively light theme palette */
 
 const NEXUS_THEMES=[
-  {
-    name:'Skyline',
-    desc:'Fresh sky blue with clean white surfaces',
-    bg:'#f3f9fd', panel:'#ffffff', text:'#17283a', muted:'#6d7c8d', line:'#dce8f1',
-    accent:'#43aee0', accent2:'#79cef0', soft:'#e4f5fc', success:'#2ba875', warm:'#f28b2d',
-    preview:['#43aee0','#dff4fc','#f28b2d','#8b63d9']
-  },
-  {
-    name:'Sunset',
-    desc:'Warm orange, coral and soft cream',
-    bg:'#fff8f1', panel:'#ffffff', text:'#302019', muted:'#806f66', line:'#eadfd7',
-    accent:'#ef7d27', accent2:'#ffad5a', soft:'#fff0df', success:'#2ca875', warm:'#df5664',
-    preview:['#ef7d27','#ffe4c8','#df5664','#8b63d9']
-  },
-  {
-    name:'Lavender',
-    desc:'Elegant purple with cool white surfaces',
-    bg:'#f8f6fd', panel:'#ffffff', text:'#28213a', muted:'#756d84', line:'#e4def0',
-    accent:'#8b63d9', accent2:'#aa84ea', soft:'#eee8fb', success:'#2ba875', warm:'#ef8b2c',
-    preview:['#8b63d9','#eee6fb','#55b9ee','#ef8b2c']
-  },
-  {
-    name:'Ocean',
-    desc:'Deep aqua accents with airy blue surfaces',
-    bg:'#f1fafb', panel:'#ffffff', text:'#16303a', muted:'#66818a', line:'#d7e9ec',
-    accent:'#20a9b8', accent2:'#62d2dc', soft:'#def5f7', success:'#2da879', warm:'#ef922e',
-    preview:['#20a9b8','#d8f4f6','#ef922e','#6b65d8']
-  },
-  {
-    name:'Peach',
-    desc:'Soft peach, rose and champagne accents',
-    bg:'#fff7f5', panel:'#ffffff', text:'#38242a', muted:'#846f75', line:'#ecdedf',
-    accent:'#e77b70', accent2:'#f2a59d', soft:'#ffebe8', success:'#31a979', warm:'#ed922f',
-    preview:['#e77b70','#ffe8e4','#ed922f','#8b63d9']
-  },
-  {
-    name:'Mint',
-    desc:'Calm green with aqua and violet details',
-    bg:'#f3faf7', panel:'#ffffff', text:'#17352c', muted:'#698079', line:'#dcebe5',
-    accent:'#32a978', accent2:'#69cda4', soft:'#e3f7ee', success:'#218e63', warm:'#ee8b2c',
-    preview:['#32a978','#dff5ea','#55b9ee','#8b63d9']
-  },
-  {
-    name:'Berry',
-    desc:'Playful magenta, pink and sky blue',
-    bg:'#fcf5fa', panel:'#ffffff', text:'#351d32', muted:'#806d7c', line:'#ecdde8',
-    accent:'#b052a8', accent2:'#d879c9', soft:'#f7e6f4', success:'#2ca875', warm:'#ef8b2c',
-    preview:['#b052a8','#f5e2f1','#55b9ee','#ef8b2c']
-  },
-  {
-    name:'Royal',
-    desc:'Premium indigo with gold and ice blue',
-    bg:'#f5f6fc', panel:'#ffffff', text:'#1d2741', muted:'#6d7890', line:'#dfe3ef',
-    accent:'#5369c9', accent2:'#7e91e1', soft:'#e8ecfb', success:'#2ca875', warm:'#e9a13b',
-    preview:['#5369c9','#e7ebfa','#e9a13b','#55b9ee']
-  },
-  {
-    name:'Aurora',
-    desc:'Balanced blue, purple and warm orange',
-    bg:'#f7f7fd', panel:'#ffffff', text:'#20233a', muted:'#71758a', line:'#e2e3ee',
-    accent:'#725bd0', accent2:'#59b9e7', soft:'#ece9fb', success:'#2ca875', warm:'#ef8730',
-    preview:['#725bd0','#e9e6fa','#59b9e7','#ef8730']
-  }
+  {name:'FIRE',desc:'Enter a molten command deck — ember glow, heat and kinetic energy.',bg:'#080507',panel:'#120b0d',text:'#fff3e9',muted:'#b99e95',line:'rgba(255,126,64,.18)',accent:'#ff6b2c',accent2:'#ffb347',soft:'rgba(255,107,44,.15)',success:'#45d39a',warm:'#ff5364',purple:'#d65cff',shadow:'0 24px 80px rgba(255,70,20,.24)',font:'Inter',world:'fire'},
+  {name:'ICE',desc:'A crystalline tactical environment — frost, glass and cold light.',bg:'#041018',panel:'#081b27',text:'#ecfbff',muted:'#86aebc',line:'rgba(111,224,255,.18)',accent:'#5ee7ff',accent2:'#b5f4ff',soft:'rgba(94,231,255,.13)',success:'#59e0ae',warm:'#ff718c',purple:'#9da2ff',shadow:'0 24px 80px rgba(40,210,255,.18)',font:'Inter',world:'ice'},
+  {name:'SPACE',desc:'A deep-space command center — nebulae, stars and luminous glass.',bg:'#05040d',panel:'#0b0a19',text:'#f6f1ff',muted:'#aaa2c4',line:'rgba(166,129,255,.18)',accent:'#a879ff',accent2:'#62dcff',soft:'rgba(168,121,255,.15)',success:'#4fe0a7',warm:'#ff6d91',purple:'#d86dff',shadow:'0 24px 90px rgba(116,64,255,.24)',font:'Inter',world:'space'},
+  {name:'GAME',desc:'A tactical HUD — neon energy, mission panels and competitive focus.',bg:'#05070a',panel:'#0a1016',text:'#effff7',muted:'#829b93',line:'rgba(83,255,178,.17)',accent:'#39ff9a',accent2:'#63e7ff',soft:'rgba(57,255,154,.13)',success:'#39ff9a',warm:'#ff5577',purple:'#a57cff',shadow:'0 24px 80px rgba(57,255,154,.18)',font:'Inter',world:'game'},
+  {name:'STUDY',desc:'A calm premium study room — paper, ink, brass and comfortable reading.',bg:'#f4efe6',panel:'#fffdf8',text:'#202a29',muted:'#6e7772',line:'rgba(45,56,52,.13)',accent:'#a66a2c',accent2:'#d6a55f',soft:'rgba(166,106,44,.12)',success:'#218c63',warm:'#c84e58',purple:'#7259a8',shadow:'0 22px 65px rgba(64,50,30,.15)',font:'Georgia',world:'study'},
+  {name:'ARGHYA',desc:'DHYEYA signature world — ceremonial gold, dark architecture and focus.',bg:'#080705',panel:'#11100c',text:'#fff8e6',muted:'#aaa18d',line:'rgba(228,188,92,.18)',accent:'#d9a441',accent2:'#ffe08a',soft:'rgba(217,164,65,.14)',success:'#54d69e',warm:'#e45c66',purple:'#b48cff',shadow:'0 24px 90px rgba(217,164,65,.22)',font:'Inter',world:'arghya'}
 ];
 
 function renderThemeStudio(){
@@ -1174,7 +1138,7 @@ function renderThemeStudio(){
         <span class="p1" style="background:${t.accent}"></span>
         <span class="p2" style="background:${t.accent2}"></span>
         <span class="p3" style="background:${t.warm}"></span>
-        <span class="p4" style="background:${t.preview[3]}"></span>
+        <span class="p4" style="background:${t.purple}"></span>
       </div>
       <div class="theme-name">${t.name}</div>
       <div class="theme-desc">${t.desc}</div>
@@ -1182,29 +1146,20 @@ function renderThemeStudio(){
         <i style="background:${t.accent}"></i>
         <i style="background:${t.accent2}"></i>
         <i style="background:${t.warm}"></i>
-        <i style="background:${t.preview[3]}"></i>
+        <i style="background:${t.purple}"></i>
       </div>
     </button>`).join('');
 }
 function applyNexusTheme(i,notify=false){
   const t=NEXUS_THEMES[i]||NEXUS_THEMES[0];
   state.theme=i;saveState();
-  document.documentElement.style.setProperty('--bg',t.bg);
-  document.documentElement.style.setProperty('--panel',t.panel);
-  document.documentElement.style.setProperty('--card',t.panel);
-  document.documentElement.style.setProperty('--elev',t.panel);
-  document.documentElement.style.setProperty('--text',t.text);
-  document.documentElement.style.setProperty('--muted',t.muted);
-  document.documentElement.style.setProperty('--line',t.line);
-  document.documentElement.style.setProperty('--gold',t.accent);
-  document.documentElement.style.setProperty('--gold2',t.accent2);
-  document.documentElement.style.setProperty('--blue',t.accent2);
-  document.documentElement.style.setProperty('--purple',t.preview[3]);
-  document.documentElement.style.setProperty('--green',t.success);
-  document.documentElement.style.setProperty('--red',t.warm);
-  document.body.dataset.nexusTheme=t.name.toLowerCase();
+  const r=document.documentElement.style;
+  r.setProperty('--bg',t.bg);r.setProperty('--panel',t.panel);r.setProperty('--surface',t.panel);r.setProperty('--card',t.panel);r.setProperty('--card2',t.panel);r.setProperty('--elev',t.panel);
+  r.setProperty('--text',t.text);r.setProperty('--muted',t.muted);r.setProperty('--line',t.line);r.setProperty('--gold',t.accent);r.setProperty('--gold2',t.accent2);r.setProperty('--blue',t.accent2);r.setProperty('--purple',t.purple);r.setProperty('--green',t.success);r.setProperty('--red',t.warm);r.setProperty('--warm',t.warm);r.setProperty('--theme-shadow',t.shadow);r.setProperty('--theme-font',t.font);
+  document.body.dataset.nexusTheme=t.world;
+  document.body.classList.toggle('theme-study',t.world==='study');
   renderThemeStudio();
-  if(notify)toast(t.name+' theme applied');
+  if(notify)toast(t.name+' world entered');
 }
 function openThemeStudio(){
   renderThemeStudio();
@@ -1288,91 +1243,112 @@ function startQuiz(mode){
     quiz.timerId=setInterval(()=>{quiz.remaining--;updateTimer();saveResume();if(quiz.remaining<=0){clearInterval(quiz.timerId);toast('Time is up. Submitting test.');submitQuiz()}},1000);
   }else document.getElementById('quizTimer').textContent='No Timer';
 }
+let lastSubmittedQuiz=null;
 function renderQuestion(){
-  const q=quiz.questions[quiz.index];
-  if(!q)return;
+  const q=quiz.questions[quiz.index]; if(!q)return;
+  const total=quiz.questions.length||1, pct=Math.round(((quiz.index+1)/total)*100);
+  const title=window.__nexusServerQuiz?.test?.title||'BPSC Test';
+  document.getElementById('quizTestTitle').textContent=title;
+  document.getElementById('quizSubjectMeta').textContent=q.subject||window.__nexusServerQuiz?.subject||'All Subjects';
   document.getElementById('qNum').textContent=`QUESTION ${quiz.index+1} OF ${quiz.questions.length}`;
+  document.getElementById('quizProgressText').textContent=pct+'%';
+  document.getElementById('quizProgressBar').style.width=pct+'%';
   document.getElementById('quizModePill').textContent=quiz.mode==='practice'?'Practice Mode':'Exam Mode';
+  const answeredCount=Object.values(quiz.answers).filter(v=>v!==undefined&&v!==null).length;
+  const reviewCount=Object.values(quiz.reviews).filter(Boolean).length;
+  document.getElementById('qAnsweredStatus').textContent=answeredCount+' Answered';
+  document.getElementById('qReviewStatus').textContent=reviewCount+' Review';
   const area=document.getElementById('questionArea');
-  area.className='';
-  area.style.maxWidth='850px';area.style.margin='28px auto 10px';area.style.textAlign='left';
-  area.innerHTML=`<div class="eyebrow">${escapeHtml(q.subject)}</div><h2 style="font-size:22px;line-height:1.45;margin:8px 0">${escapeHtml(q.question)}</h2>`;
+  area.className=''; area.style.maxWidth='920px';area.style.margin='28px auto 10px';area.style.textAlign='left';
+  const qMeta=[q.subject, q.year||window.__nexusServerQuiz?.test?.year, q.source_exam||q.source, q.topic].filter(Boolean).map(escapeHtml).join(' · ');
+  area.innerHTML=`<div class="eyebrow">${escapeHtml(q.subject||'GENERAL')}</div><div class="question-source-line">${qMeta||'PYQ ARCHIVE'}</div><h2>${escapeHtml(q.question||q.question_en||'')}</h2>`;
   const box=document.getElementById('options');box.innerHTML='';
-  q.options.forEach((opt,i)=>{
-    const b=document.createElement('button');b.className='option answer-option';
+  (Array.isArray(q.options)?q.options:[]).forEach((opt,i)=>{
+    const b=document.createElement('button');b.type='button';b.className='option answer-option';
     if(quiz.answers[q.id]===i)b.classList.add('selected');
-    b.innerHTML=`<b>${String.fromCharCode(65+i)}</b>&nbsp;&nbsp;${escapeHtml(opt)}`;
+    b.innerHTML=`<b>${String.fromCharCode(65+i)}</b><span>${escapeHtml(opt)}</span>`;
     b.onclick=()=>selectAnswer(i);box.appendChild(b);
   });
-  const e=document.createElement('button');e.className='option answer-option';e.textContent='E  Not Attempted / प्रयास नहीं किया';
+  const e=document.createElement('button');e.type='button';e.className='option answer-option not-attempted-option';
+  e.innerHTML='<b>—</b><span>Not Attempted / प्रयास नहीं किया</span>';
   if(quiz.answers[q.id]===null)e.classList.add('selected');e.onclick=()=>selectAnswer(null);box.appendChild(e);
   const fb=document.getElementById('feedback');fb.className='practice-feedback';fb.textContent='';
   document.getElementById('bookmarkBtn').textContent=quiz.bookmarks[q.id]?'🔖 Bookmarked':'🔖 Bookmark';
   document.getElementById('reviewBtn').textContent=quiz.reviews[q.id]?'✓ Review Marked':'Mark Review';
-  renderNavigator();
-  saveResume();
+  document.getElementById('quizSaveState').textContent='✓ Auto-saved';
+  renderNavigator(); saveResume();
 }
 function selectAnswer(i){
   const q=quiz.questions[quiz.index];quiz.answers[q.id]=i;
-  document.querySelectorAll('.answer-option').forEach((b,n)=>b.classList.toggle('selected',n===i));
+  document.querySelectorAll('.answer-option').forEach((b,n)=>{if(n<q.options.length)b.classList.toggle('selected',n===i);else b.classList.toggle('selected',i===null)});
   if(quiz.mode==='practice' && i!==null){
-    const fb=document.getElementById('feedback');fb.className='practice-feedback '+(i===q.answer?'ok':'bad');
-    fb.innerHTML=(i===q.answer?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+escapeHtml(q.explanation);
-    if(i!==q.answer)addRevision(q.id);
+    const fb=document.getElementById('feedback');
+    if(q.answer===null || q.answer===undefined){fb.className='practice-feedback neutral';fb.innerHTML='<b>No valid answer.</b> '+escapeHtml(q.explanation||'This source question has no valid option marked as correct.');}
+    else {const ok=Number(i)===Number(q.answer);fb.className='practice-feedback '+(ok?'ok':'bad');fb.innerHTML=(ok?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+escapeHtml(q.explanation||'');if(!ok)addRevision(q.id);}
   }
-  saveResume();renderNavigator();
+  saveResume();renderNavigator();updateQuizCounts();
 }
+function updateQuizCounts(){
+  const answered=Object.values(quiz.answers).filter(v=>v!==undefined&&v!==null).length;
+  const review=Object.values(quiz.reviews).filter(Boolean).length;
+  const a=document.getElementById('qAnsweredStatus'),r=document.getElementById('qReviewStatus');if(a)a.textContent=answered+' Answered';if(r)r.textContent=review+' Review';
+  const p=document.getElementById('quizProgressBar');if(p)p.style.width=Math.round(((quiz.index+1)/Math.max(1,quiz.questions.length))*100)+'%';
+}
+function clearResponse(){const q=quiz.questions[quiz.index];if(!q)return;delete quiz.answers[q.id];const fb=document.getElementById('feedback');fb.className='practice-feedback';fb.textContent='';renderQuestion();toast('Response cleared')}
 function nextQuestion(){if(quiz.index<quiz.questions.length-1){quiz.index++;renderQuestion()}else openSubmitModal()}
 function prevQuestion(){if(quiz.index>0){quiz.index--;renderQuestion()}else toast('Already at the first question')}
 function toggleBookmark(){const id=quiz.questions[quiz.index].id;quiz.bookmarks[id]=!quiz.bookmarks[id];saveResume();renderQuestion();toast(quiz.bookmarks[id]?'Bookmarked':'Bookmark removed')}
 function toggleReview(){const id=quiz.questions[quiz.index].id;quiz.reviews[id]=!quiz.reviews[id];saveResume();renderQuestion();toast(quiz.reviews[id]?'Marked for review':'Review mark removed')}
 function renderNavigator(){
-  const box=document.getElementById('qgrid');box.innerHTML='';
-  quiz.questions.forEach((q,i)=>{
-    const b=document.createElement('button');b.className='qdot '+(i===quiz.index?'current ':'')+(quiz.answers[q.id]!==undefined?'done ':'')+(quiz.reviews[q.id]?'review':'');
-    b.textContent=i+1;b.onclick=()=>{quiz.index=i;renderQuestion()};box.appendChild(b)
-  })
+  const box=document.getElementById('qgrid');if(!box)return;box.innerHTML='';
+  quiz.questions.forEach((q,i)=>{const b=document.createElement('button');b.type='button';const answered=quiz.answers[q.id]!==undefined&&quiz.answers[q.id]!==null;b.className='qdot '+(i===quiz.index?'current ':'')+(answered?'done ':'')+(quiz.reviews[q.id]?'review':'');b.textContent=i+1;b.onclick=()=>{quiz.index=i;renderQuestion();closeQuizNavigator()};box.appendChild(b)})
 }
+function openQuizNavigator(){const nav=document.querySelector('.premium-navigator');if(nav)nav.classList.add('mobile-open');document.getElementById('quizNavOverlay')?.classList.add('show')}
+function closeQuizNavigator(){document.querySelector('.premium-navigator')?.classList.remove('mobile-open');document.getElementById('quizNavOverlay')?.classList.remove('show')}
+function toggleFocusMode(){document.body.classList.toggle('quiz-fullscreen');const on=document.body.classList.contains('quiz-fullscreen');document.getElementById('focusModeBtn').textContent=on?'✕ Exit Focus':'⛶ Focus';if(on)toast('Focus mode enabled');else toast('Focus mode disabled')}
 function updateTimer(){
-  const s=Math.max(0,quiz.remaining),m=Math.floor(s/60),sec=s%60;
-  document.getElementById('quizTimer').textContent=`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  const s=Math.max(0,quiz.remaining),m=Math.floor(s/60),sec=s%60;const el=document.getElementById('quizTimer');if(!el)return;
+  el.textContent=`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;el.classList.toggle('timer-warn',s<=300);el.classList.toggle('timer-critical',s<=60);
 }
 function openSubmitModal(){
   if(!quiz.questions.length)return toast('Start a test first');
-  const answered=Object.values(quiz.answers).filter(v=>v!==undefined&&v!==null).length;
-  const marked=Object.values(quiz.reviews).filter(Boolean).length;
-  document.getElementById('submitSummary').innerHTML=`<b>${answered}</b> answered · <b>${quiz.questions.length-answered}</b> unanswered · <b>${marked}</b> marked for review`;
+  const answered=Object.values(quiz.answers).filter(v=>v!==undefined&&v!==null).length;const marked=Object.values(quiz.reviews).filter(Boolean).length;const unanswered=quiz.questions.length-answered;
+  document.getElementById('submitSummary').innerHTML=`<div class="submit-stat-grid"><div><b>${answered}</b><span>Answered</span></div><div><b>${unanswered}</b><span>Unattempted</span></div><div><b>${marked}</b><span>Marked</span></div><div><b>${quiz.mode==='exam'?'Timed':'Practice'}</b><span>Mode</span></div></div><p class="sub" style="margin-top:12px">You can continue testing or submit this attempt. ${unanswered?`You still have ${unanswered} unattempted question${unanswered===1?'':'s'}.`: 'All questions have been answered.'}</p>`;
   openModal('submitModal');
 }
-function submitQuiz(){
-  closeModal('submitModal');
-  if(quiz.timerId)clearInterval(quiz.timerId);
-  let correct=0,answered=0;
-  quiz.questions.forEach(q=>{const a=quiz.answers[q.id];if(a!==undefined&&a!==null){answered++;if(a===q.answer)correct++;}});
-  const incorrect=answered-correct,unanswered=quiz.questions.length-answered;
-  const score=Math.round((correct/quiz.questions.length)*100);
-  state.attempts.push({date:new Date().toISOString(),mode:quiz.mode,total:quiz.questions.length,correct,incorrect,unanswered,score});
-  state.attempts=state.attempts.slice(-50);saveState();clearResume();
-  document.getElementById('result').querySelector('h1').textContent='Test Submitted Successfully';
-  document.getElementById('result').querySelector('.score-ring').textContent=score+'%';
-  const nums=document.querySelectorAll('#result .stat .num');
-  nums[0].textContent=correct;nums[1].textContent=incorrect;nums[2].textContent=unanswered;nums[3].textContent=quiz.mode==='exam'?'Timed':'Practice';
-  openPage('result');
+function buildResultData(){
+  const bySubject={};let correct=0,answered=0,noValid=0;
+  quiz.questions.forEach(q=>{const a=quiz.answers[q.id];const sub=q.subject||'Uncategorized';if(!bySubject[sub])bySubject[sub]={total:0,answered:0,correct:0,wrong:0,noValid:0};const s=bySubject[sub];s.total++;if(a!==undefined&&a!==null){answered++;s.answered++;if(q.answer===null||q.answer===undefined){noValid++;s.noValid++}else if(Number(a)===Number(q.answer)){correct++;s.correct++}else{s.wrong++}}});
+  const scoredAnswered=answered-noValid,incorrect=Math.max(0,scoredAnswered-correct),unanswered=quiz.questions.length-answered,score=scoredAnswered?Math.round(correct/scoredAnswered*100):0;
+  return {correct,incorrect,unanswered,noValid,score,answered,scoredAnswered,bySubject};
 }
+function submitQuiz(){
+  closeModal('submitModal');closeQuizNavigator();if(quiz.timerId)clearInterval(quiz.timerId);
+  lastSubmittedQuiz={mode:quiz.mode,questions:quiz.questions.map(q=>({...q})),answers:{...quiz.answers},bookmarks:{...quiz.bookmarks},reviews:{...quiz.reviews},startedAt:quiz.startedAt,remaining:quiz.remaining};
+  const r=buildResultData();state.attempts.push({date:new Date().toISOString(),mode:quiz.mode,total:quiz.questions.length,correct:r.correct,incorrect:r.incorrect,unanswered:r.unanswered,score:r.score});state.attempts=state.attempts.slice(-50);saveState();clearResume();
+  document.getElementById('result').querySelector('h1').textContent='Performance Report';document.getElementById('result').querySelector('.score-ring').textContent=r.score+'%';
+  document.getElementById('resultSubtitle').textContent=`${r.answered} attempted · ${r.unanswered} unattempted · ${quiz.mode==='exam'?'Exam Mode':'Practice Mode'}`;
+  document.getElementById('resultCorrect').textContent=r.correct;document.getElementById('resultIncorrect').textContent=r.incorrect;document.getElementById('resultUnanswered').textContent=r.unanswered;document.getElementById('resultNoValid').textContent=r.noValid;
+  renderResultDetails(r);openPage('result');
+}
+function renderResultDetails(r){
+  const host=document.getElementById('resultSubjects');if(host){host.innerHTML=Object.entries(r.bySubject).sort((a,b)=>b[1].total-a[1].total).map(([sub,x])=>{const denom=x.answered-x.noValid;const acc=denom?Math.round(x.correct/denom*100):0;return `<div class="result-review-row"><div><b>${escapeHtml(sub)}</b><div class="result-mini-bar"><i style="width:${acc}%"></i></div></div><span class="pill">${x.correct}/${denom||0}</span><b>${acc}%</b></div>`}).join('')||'<p class="sub">No scored questions.</p>'}
+  const timing=document.getElementById('resultTiming');if(timing){const elapsed=lastSubmittedQuiz?.startedAt?Math.max(0,Math.round((Date.now()-lastSubmittedQuiz.startedAt)/1000)):0;const avg=r.answered?Math.round(elapsed/r.answered):0;timing.innerHTML=`<div class="task"><span>Questions attempted</span><b style="margin-left:auto">${r.answered}</b></div><div class="task"><span>Scored questions</span><b style="margin-left:auto">${r.scoredAnswered}</b></div><div class="task"><span>Average time / attempted</span><b style="margin-left:auto">${avg}s</b></div><div class="task"><span>Marked for review</span><b style="margin-left:auto">${Object.values(lastSubmittedQuiz?.reviews||{}).filter(Boolean).length}</b></div>`}
+  reviewResult('all');
+}
+function reviewResult(filter){
+  const host=document.getElementById('resultQuestionReview');if(!host||!lastSubmittedQuiz)return;const rows=lastSubmittedQuiz.questions.map((q,i)=>{const a=lastSubmittedQuiz.answers[q.id];const answered=a!==undefined&&a!==null;const noValid=q.answer===null||q.answer===undefined;const correct=answered&&!noValid&&Number(a)===Number(q.answer);return {q,i,a,answered,noValid,correct}}).filter(x=>filter==='wrong'?!x.correct&&x.answered&&!x.noValid:filter==='unanswered'?!x.answered:true);
+  host.innerHTML=rows.map(x=>{const status=!x.answered?'Unattempted':x.noValid?'No valid answer':x.correct?'Correct':'Incorrect';const cls=status==='Correct'?'green':status==='Incorrect'?'red':status==='No valid answer'?'violet':'';return `<div class="result-review-row"><div><b>Q${x.i+1}</b> · ${escapeHtml((x.q.question||'').slice(0,180))}</div><span class="pill ${cls}">${status}</span><button class="btn" onclick="openResultQuestion(${x.i})">Review</button></div>`}).join('')||'<p class="sub">No questions in this filter.</p>';
+}
+function openResultQuestion(i){if(!lastSubmittedQuiz)return;quiz={...lastSubmittedQuiz,index:i,timerId:null};openPage('quiz');renderQuestion();toast('Reviewing question '+(i+1))}
+function retryWrongQuestions(){if(!lastSubmittedQuiz)return;const qs=lastSubmittedQuiz.questions.filter(q=>{const a=lastSubmittedQuiz.answers[q.id];return a!==undefined&&a!==null&&q.answer!==null&&q.answer!==undefined&&Number(a)!==Number(q.answer)});if(!qs.length)return toast('No scored wrong questions to retry');quiz={mode:'practice',questions:qs,index:0,answers:{},bookmarks:{},reviews:{},startedAt:Date.now(),remaining:0,timerId:null};openPage('quiz');renderQuestion();toast('Wrong-question revision started')}
+function reportCurrentQuestion(){openModal('reportModal')}
+function saveQuestionReport(reason){const q=quiz.questions[quiz.index];const reports=JSON.parse(localStorage.getItem('dhyeya_question_reports_v1')||'[]');reports.push({question_id:q?.id,reason,created_at:new Date().toISOString(),question:(q?.question||'').slice(0,500)});localStorage.setItem('dhyeya_question_reports_v1',JSON.stringify(reports.slice(-500)));closeModal('reportModal');toast('Question reported for review')}
 function saveResume(){
   if(!quiz.questions.length)return;
-  try{localStorage.setItem('bpn_resume_v1',JSON.stringify({mode:quiz.mode,index:quiz.index,answers:quiz.answers,bookmarks:quiz.bookmarks,reviews:quiz.reviews,remaining:quiz.remaining,startedAt:quiz.startedAt}))}catch(e){}
+  try{localStorage.setItem('bpn_resume_v1',JSON.stringify({mode:quiz.mode,index:quiz.index,answers:quiz.answers,bookmarks:quiz.bookmarks,reviews:quiz.reviews,remaining:quiz.remaining,startedAt:quiz.startedAt,question_ids:quiz.questions.map(q=>q.id)}));const x=document.getElementById('quizSaveState');if(x)x.textContent='✓ Auto-saved'}catch(e){const x=document.getElementById('quizSaveState');if(x)x.textContent='Save unavailable'}
 }
 function clearResume(){localStorage.removeItem('bpn_resume_v1')}
-function resumeLastTest(){
-  try{
-    const r=JSON.parse(localStorage.getItem('bpn_resume_v1')||'null');if(!r)return false;
-    quiz={mode:r.mode,questions:[...DEMO_QUESTIONS],index:r.index||0,answers:r.answers||{},bookmarks:r.bookmarks||{},reviews:r.reviews||{},remaining:r.remaining||0,startedAt:r.startedAt||Date.now(),timerId:null};
-    openPage('quiz');renderQuestion();
-    if(quiz.mode==='exam'){updateTimer();quiz.timerId=setInterval(()=>{quiz.remaining--;updateTimer();saveResume();if(quiz.remaining<=0){clearInterval(quiz.timerId);submitQuiz()}},1000)}
-    return true
-  }catch(e){clearResume();return false}
-}
 function addRevision(id){if(!state.revision.includes(id)){state.revision.push(id);saveState()}}
 function renderRevision(){
   const rows=document.querySelector('#revision tbody');if(!rows)return;
@@ -1427,7 +1403,6 @@ const resumeBtn=[...document.querySelectorAll('#dashboard .resume .btn')][0];
 if(resumeBtn)resumeBtn.onclick=()=>resumeLastTest()?null:toast('No unfinished test saved');
 
 /* Restore saved theme. */
-(function(){const themes=[['#080a0d','#c9a45c'],['#121212','#d7c29a'],['#07100d','#8ebf92'],['#100908','#e27b45'],['#080d16','#6eb5dc'],['#090812','#a789df']];const t=themes[state.theme||0];document.documentElement.style.setProperty('--bg',t[0]);document.documentElement.style.setProperty('--gold',t[1]);document.documentElement.style.setProperty('--gold2',t[1]);})();
 applyNexusTheme(state.theme||0,false);renderPlanner();renderRevision();renderPerformance();
 if(location.hash==='#tests')openPage('tests');
 </script>
@@ -1469,14 +1444,18 @@ if(location.hash==='#tests')openPage('tests');
 </div>
 
 
+<!-- PREMIUM QUIZ MODALS -->
+<div id="reviewModal" class="modal" aria-hidden="true"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REVIEW</div><h2>Review Attempt</h2><p class="sub">Jump through the selected questions.</p></div><button class="close" onclick="closeModal('reviewModal')">×</button></div><div id="reviewModalBody" class="review-modal-body"></div></div></div>
+<div id="reportModal" class="modal" aria-hidden="true"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REPORT</div><h2>Report this question</h2><p class="sub">Your report is saved locally for follow-up.</p></div><button class="close" onclick="closeModal('reportModal')">×</button></div><div class="report-grid"><button class="btn" onclick="saveQuestionReport('Wrong answer')">Wrong answer</button><button class="btn" onclick="saveQuestionReport('Incorrect explanation')">Incorrect explanation</button><button class="btn" onclick="saveQuestionReport('Typo / formatting')">Typo / formatting</button><button class="btn" onclick="saveQuestionReport('Duplicate')">Duplicate</button><button class="btn" onclick="saveQuestionReport('Question unclear')">Question unclear</button><button class="btn" onclick="saveQuestionReport('Other')">Other</button></div></div></div>
+
 <!-- PREMIUM THEME STUDIO -->
 <div id="themeModal" class="theme-modal" aria-hidden="true">
   <div class="theme-box">
     <div class="theme-head">
       <div>
-        <div class="eyebrow">PERSONALIZE YOUR NEXUS</div>
+        <div class="eyebrow">PERSONALIZE YOUR DHYEYA</div>
         <h2>Choose Your Theme</h2>
-        <p>Every theme uses a different palette, accents, surfaces and interaction colors.</p>
+        <p>Every theme is a different visual world — environment, surfaces, controls, effects and test interface.</p>
       </div>
       <button class="theme-close" onclick="closeThemeStudio()" aria-label="Close">×</button>
     </div>
@@ -1484,8 +1463,8 @@ if(location.hash==='#tests')openPage('tests');
   </div>
 </div>
 
-<script src="/nexus-foundation.js?v=3.2.0"></script>
-<script src="/nexus-v2.js?v=3.2.0"></script>
-<script src="/dhyeeya-v3.js?v=3.2.0"></script>
+<script src="/nexus-foundation.js?v=4.0.0"></script>
+<script src="/nexus-v2.js?v=4.0.0"></script>
+<script src="/dhyeeya-v3.js?v=4.0.0"></script>
 </body>
 </html>
