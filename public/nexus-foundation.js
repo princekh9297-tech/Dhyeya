@@ -3,6 +3,25 @@
  const API='/api'; let student=null;
  const $=s=>document.querySelector(s);
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ // Global toast helper used by Admin/Question Bank and shared UI.
+ if(!window.toast){
+  window.toast=function(message){
+   let el=document.getElementById('dhyGlobalToast');
+   if(!el){
+    el=document.createElement('div');
+    el.id='dhyGlobalToast';
+    el.setAttribute('role','status');
+    el.setAttribute('aria-live','polite');
+    el.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(12px);z-index:100000;max-width:min(92vw,520px);padding:12px 16px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#171c22;color:#f4f7fa;box-shadow:0 12px 35px rgba(0,0,0,.35);font:600 14px/1.35 system-ui,sans-serif;opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease';
+    document.body.appendChild(el);
+   }
+   el.textContent=String(message??'');
+   el.style.opacity='1';
+   el.style.transform='translateX(-50%) translateY(0)';
+   clearTimeout(window.__dhyToastTimer);
+   window.__dhyToastTimer=setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(-50%) translateY(12px)'},2600);
+  };
+ }
  async function api(path,opts={}){const r=await fetch(API+path,{credentials:'include',cache:'no-store',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(d.error||'Request failed');e.status=r.status;throw e}return d}
  function mountAuth(){if($('#nexusAuthMount'))return;const m=document.createElement('div');m.id='nexusAuthMount';m.innerHTML=`<div id="nexusAuthModal" class="modal" aria-hidden="true"><div class="modalbox" style="max-width:480px"><div class="modalhead"><div><div class="eyebrow">DHYEYA</div><h2 id="nexusAuthTitle" style="margin:6px 0">Sign in</h2><p id="nexusAuthSub" class="sub">Use your Student ID, username or email.</p></div><button class="close" id="nexusAuthClose">×</button></div><div style="display:grid;gap:12px;margin-top:18px"><input id="nxName" class="field-input" placeholder="Full name" style="display:none;background:#0d1115;border:1px solid var(--line);color:var(--text);border-radius:11px;padding:12px"><input id="nxEmail" class="field-input" placeholder="Student ID / username / email" style="background:#0d1115;border:1px solid var(--line);color:var(--text);border-radius:11px;padding:12px"><input id="nxPassword" class="field-input" type="password" placeholder="Password" style="background:#0d1115;border:1px solid var(--line);color:var(--text);border-radius:11px;padding:12px"><input id="nxUsername" class="field-input" placeholder="Username (optional)" style="display:none;background:#0d1115;border:1px solid var(--line);color:var(--text);border-radius:11px;padding:12px"><button id="nxSubmit" class="btn primary">Sign in</button><button id="nxSwitch" class="btn ghost" style="display:none">Create account</button><div id="nxAuthError" class="sub" style="color:#ff9ca1;min-height:18px"></div></div></div></div>`;document.body.appendChild(m);$('#nexusAuthClose').onclick=closeAuth;$('#nxSwitch').onclick=()=>setMode(!window.__nxSignup);$('#nxSubmit').onclick=submitAuth}
  function setMode(signup){window.__nxSignup=signup;$('#nexusAuthTitle').textContent=signup?'Create your account':'Sign in';$('#nexusAuthSub').textContent=signup?'Create a student account for your preparation.':'Use your Student ID, username or email.';$('#nxName').style.display=signup?'block':'none';$('#nxUsername').style.display=signup?'block':'none';$('#nxSubmit').textContent=signup?'Create account':'Sign in';$('#nxSwitch').textContent=signup?'Already have an account? Sign in':'Create account';$('#nxAuthError').textContent='';}
