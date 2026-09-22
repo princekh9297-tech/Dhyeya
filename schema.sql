@@ -1,0 +1,211 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_code TEXT UNIQUE,
+  email TEXT UNIQUE,
+  password_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  username TEXT UNIQUE,
+  avatar_url TEXT,
+  bio TEXT,
+  role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student','admin')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','blocked','deactivated')),
+  target_exam TEXT DEFAULT 'BPSC Prelims',
+  exam_date DATE,
+  daily_target INTEGER DEFAULT 100,
+  xp INTEGER NOT NULL DEFAULT 0,
+  level INTEGER NOT NULL DEFAULT 1,
+  streak_days INTEGER NOT NULL DEFAULT 0,
+  last_activity_date DATE,
+  last_login_at TIMESTAMPTZ,
+  preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS student_code TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'student';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_code ON users(student_code) WHERE student_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_status_role ON users(status,role);
+
+CREATE TABLE IF NOT EXISTS planner_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  task_date DATE NOT NULL, title TEXT NOT NULL, subject TEXT, target INTEGER,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
+  completed BOOLEAN NOT NULL DEFAULT FALSE, completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_planner_user_date ON planner_tasks(user_id,task_date);
+
+CREATE TABLE IF NOT EXISTS tests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT UNIQUE NOT NULL, title TEXT NOT NULL, institution TEXT, category TEXT,
+  year INTEGER, sequence_no INTEGER, access_type TEXT NOT NULL DEFAULT 'premium',
+  duration_seconds INTEGER NOT NULL DEFAULT 7200, published BOOLEAN NOT NULL DEFAULT TRUE,
+  question_count INTEGER NOT NULL DEFAULT 0, metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_tests_library ON tests(institution,year DESC,sequence_no);
+
+CREATE TABLE IF NOT EXISTS questions (
+  id TEXT PRIMARY KEY,
+  subject TEXT, topic TEXT, subtopic TEXT, year INTEGER, language TEXT DEFAULT 'bilingual',
+  question_en TEXT NOT NULL, question_hi TEXT, options JSONB NOT NULL DEFAULT '[]'::jsonb,
+  answer INTEGER, explanation_en TEXT, explanation_hi TEXT, difficulty TEXT,
+  source TEXT, metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_questions_subject_topic ON questions(subject,topic);
+CREATE INDEX IF NOT EXISTS idx_questions_year ON questions(year DESC);
+
+CREATE TABLE IF NOT EXISTS test_questions (
+  test_id UUID NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY(test_id,question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_test_questions_order ON test_questions(test_id,sort_order);
+
+CREATE TABLE IF NOT EXISTS test_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  test_id TEXT NOT NULL, mode TEXT NOT NULL CHECK (mode IN ('practice','exam')),
+  score NUMERIC(7,2) NOT NULL DEFAULT 0, total_questions INTEGER NOT NULL DEFAULT 0,
+  correct INTEGER NOT NULL DEFAULT 0, incorrect INTEGER NOT NULL DEFAULT 0, unattempted INTEGER NOT NULL DEFAULT 0,
+  accuracy NUMERIC(7,2) NOT NULL DEFAULT 0, time_taken_seconds INTEGER NOT NULL DEFAULT 0,
+  started_at TIMESTAMPTZ, submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_attempts_user_time ON test_attempts(user_id,submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_attempts_test_time ON test_attempts(test_id,submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS question_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  attempt_id UUID NOT NULL REFERENCES test_attempts(id) ON DELETE CASCADE, question_id TEXT NOT NULL,
+  selected_option INTEGER, correct_option INTEGER, is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+  is_bookmarked BOOLEAN NOT NULL DEFAULT FALSE, marked_for_review BOOLEAN NOT NULL DEFAULT FALSE,
+  time_spent_seconds INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_question_attempts_user_question ON question_attempts(user_id,question_id);
+
+CREATE TABLE IF NOT EXISTS revision_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL, source TEXT, reason TEXT, notes TEXT,
+  revision_status TEXT NOT NULL DEFAULT 'needs_revision', next_revision_date DATE,
+  revision_count INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id,question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_revision_user_due ON revision_items(user_id,next_revision_date);
+
+CREATE TABLE IF NOT EXISTS xp_ledger (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL, source_id TEXT, xp_amount INTEGER NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_xp_user_time ON xp_ledger(user_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS badges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  badge_key TEXT NOT NULL, earned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UNIQUE(user_id,badge_key)
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL, target_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
+
+-- Existing v1 databases may have a NOT NULL email column. Make it nullable so admin-generated accounts can use student_code only.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='email') THEN
+    ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+  END IF;
+EXCEPTION WHEN others THEN NULL; END $$;
+
+
+-- Persistent in-progress quiz sessions: survives browser close, device change and multi-day gaps.
+CREATE TABLE IF NOT EXISTS quiz_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  test_id TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('practice','exam')),
+  state JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress','completed','abandoned')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_sessions_one_open_per_user ON quiz_sessions(user_id) WHERE status='in_progress';
+CREATE INDEX IF NOT EXISTS idx_quiz_sessions_user_status ON quiz_sessions(user_id,status,updated_at DESC);
+
+
+-- DHYEYA V2: persistent notifications and real-time quiz battles.
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  notification_type TEXT NOT NULL DEFAULT 'announcement',
+  action_url TEXT,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS notification_recipients (
+  notification_id UUID NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  read_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  PRIMARY KEY(notification_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_recipients_user ON notification_recipients(user_id,read_at,notification_id);
+
+CREATE TABLE IF NOT EXISTS battle_rooms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  opponent_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','starting','active','completed','cancelled','expired')),
+  subject TEXT,
+  topic TEXT,
+  difficulty TEXT,
+  question_count INTEGER NOT NULL DEFAULT 10,
+  time_per_question_seconds INTEGER NOT NULL DEFAULT 20,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  accepted_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  winner_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_battle_rooms_status ON battle_rooms(status,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_battle_rooms_creator ON battle_rooms(creator_user_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS battle_answers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  battle_id UUID NOT NULL REFERENCES battle_rooms(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  question_no INTEGER NOT NULL,
+  selected_option INTEGER,
+  is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+  response_ms INTEGER NOT NULL DEFAULT 0,
+  points INTEGER NOT NULL DEFAULT 0,
+  answered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(battle_id,user_id,question_no)
+);
+CREATE INDEX IF NOT EXISTS idx_battle_answers_battle ON battle_answers(battle_id,question_no);
+
+CREATE TABLE IF NOT EXISTS battle_questions (
+  battle_id UUID NOT NULL REFERENCES battle_rooms(id) ON DELETE CASCADE,
+  question_no INTEGER NOT NULL,
+  question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE RESTRICT,
+  PRIMARY KEY(battle_id,question_no)
+);
+
+CREATE TABLE IF NOT EXISTS user_presence (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  battle_id UUID REFERENCES battle_rooms(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_presence_seen ON user_presence(last_seen_at DESC);
