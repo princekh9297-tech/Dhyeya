@@ -992,11 +992,8 @@ body.sidebar-open .nav-overlay{
 
 <!-- PYQ -->
 <div id="pyq" class="page">
-  <div class="hero"><div class="eyebrow">BPSC PYQ ARCHIVE</div><h1>Previous Year Questions</h1><p class="sub">Open a complete paper in Practice Mode or Exam Mode. Tests imported from the Admin Question Bank appear here automatically.</p></div>
-  <div class="card">
-    <div class="section-head"><div><h3>Available BPSC Papers</h3><p class="sub">Year/paper-wise archive · live from PostgreSQL</p></div><button class="btn" onclick="NexusV2.loadPyqArchive()">Refresh</button></div>
-    <div id="pyqArchiveList" class="test-picker-grid" style="max-height:none;overflow:visible"><div class="sub">Loading BPSC PYQ Archive…</div></div>
-  </div>
+  <div class="hero"><div class="eyebrow">BPSC PYQ ARCHIVE</div><h1>Previous Year Questions</h1><p class="sub">Choose a paper, then select any subject you want to attempt. Subject counts and new questions are loaded directly from PostgreSQL.</p></div>
+  <div id="pyqLiveHost"><div class="card"><p class="sub">Loading BPSC PYQ Archive…</p></div></div>
 </div>
 
 <!-- REVISION -->
@@ -1492,7 +1489,3 @@ if(location.hash==='#tests')openPage('tests');
 <script src="/dhyeeya-v3.js?v=3.2.0"></script>
 </body>
 </html>
-document.addEventListener('DOMContentLoaded',()=>{
-  forceToolsClosed();
-});
-window.addEventListener('load',forceToolsClosed);
