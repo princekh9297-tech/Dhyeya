@@ -1,0 +1,2 @@
+id,subject,topic,year,language,question_en,question_hi,option_a,option_b,option_c,option_d,answer,explanation_en,explanation_hi,difficulty,source
+MY-0001,Polity,Constitution,2026,english,"Your question text","आपका प्रश्न",Option A,Option B,Option C,Option D,A,"Explanation","व्याख्या",medium,"Your Source"

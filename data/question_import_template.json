@@ -1,0 +1,17 @@
+[
+  {
+    "id": "MY-0001",
+    "subject": "Polity",
+    "topic": "Constitution",
+    "year": 2026,
+    "language": "english",
+    "question_en": "Your question text",
+    "question_hi": "आपका प्रश्न",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "answer": 0,
+    "explanation_en": "Explanation",
+    "explanation_hi": "व्याख्या",
+    "difficulty": "medium",
+    "source": "Your Source"
+  }
+]
