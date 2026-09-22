@@ -992,21 +992,11 @@ body.sidebar-open .nav-overlay{
 
 <!-- PYQ -->
 <div id="pyq" class="page">
-  <div class="hero"><div class="eyebrow">PYQ ARCHIVE</div><h1>Search & Custom Practice</h1><p class="sub">Build targeted practice sessions from the existing question bank.</p></div>
+  <div class="hero"><div class="eyebrow">BPSC PYQ ARCHIVE</div><h1>Previous Year Questions</h1><p class="sub">Open a complete paper in Practice Mode or Exam Mode. Tests imported from the Admin Question Bank appear here automatically.</p></div>
   <div class="card">
-    <div class="searchbar"><input placeholder="Search topic or question…"><button class="btn primary" onclick="toast('Search filters ready for question data')">Apply Search</button></div>
-    <div class="grid filters">
-      <div class="field"><label>MAIN SUBJECT</label><select><option>All Subjects</option></select></div>
-      <div class="field"><label>TOPIC / BRANCH</label><select><option>All Topics</option></select></div>
-      <div class="field"><label>SUB-TOPIC</label><select><option>All Sub-topics</option></select></div>
-      <div class="field"><label>QUIZ / CHAPTER</label><select><option>All Quizzes</option></select></div>
-      <div class="field"><label>EXAM</label><select><option>All Exams</option></select></div>
-      <div class="field"><label>FROM YEAR</label><select><option>Any Start Year</option></select></div>
-      <div class="field"><label>TO YEAR</label><select><option>Any End Year</option></select></div>
-      <div class="field"><label>STATUS</label><select><option>All Questions</option></select></div>
-    </div>
+    <div class="section-head"><div><h3>Available BPSC Papers</h3><p class="sub">Year/paper-wise archive · live from PostgreSQL</p></div><button class="btn" onclick="NexusV2.loadPyqArchive()">Refresh</button></div>
+    <div id="pyqArchiveList" class="test-picker-grid" style="max-height:none;overflow:visible"><div class="sub">Loading BPSC PYQ Archive…</div></div>
   </div>
-  <div class="card" style="margin-top:16px;text-align:center"><div class="eyebrow">CUSTOM PRACTICE</div><h2>Questions will appear here</h2><p class="sub">Dynamic count and practice generation will connect when the question bank is added.</p><button class="btn primary" onclick="toast('Question bank not connected yet')">Start Practice Test</button></div>
 </div>
 
 <!-- REVISION -->
