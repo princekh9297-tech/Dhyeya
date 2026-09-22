@@ -52,8 +52,7 @@
     if(tools&&!tools.querySelector('[data-dhy-battle-tool]')){const b=document.createElement('button');b.className='utility-item';b.dataset.dhyBattleTool='1';b.innerHTML='<span class="uicon">⚔</span><span><b>Battle Arena</b><small>Live 1v1 quiz</small></span>';b.onclick=()=>{openBattle();window.closeUtilityHub?.()};tools.appendChild(b)}
   }
   async function openBattle(){
-    if(!currentUser){currentUser=await F().refresh();if(!currentUser){location.replace('/');return;}}
-    try{currentUser=await F().refresh();}catch{}
+    if(!currentUser){toast('Please sign in again.');return;}
     window.closeUtilityHub?.();
     let page=$('#battle');
     if(!page){page=document.createElement('section');page.id='battle';page.className='page';page.innerHTML=`<div class="hero"><div class="hero-row"><div><div class="eyebrow">BATTLE ARENA</div><h1>Compete. Improve. Repeat.</h1><p class="sub">1v1 live quiz battles with server-controlled scoring.</p></div><button class="btn primary" id="dhyChallenge">⚔ Challenge Everyone</button></div></div><div class="dhy-battle-grid"><div class="dhy-battle-card"><h3>Open Challenges</h3><div id="dhyBattles" class="sub">Loading…</div></div><div class="dhy-battle-card"><h3>Online Aspirants</h3><div id="dhyOnline" class="sub">Loading…</div></div></div><div class="dhy-battle-card" style="margin-top:14px"><h3>Battle History</h3><div id="dhyHistory" class="sub">Loading…</div></div>`;document.querySelector('.content').appendChild(page);$('#dhyChallenge').onclick=createBattle}
@@ -70,19 +69,26 @@
   function showBattleResult(d){const old=$('.dhy-battle-modal');if(old)old.remove();const me=d.players.find(x=>x.user_id===currentUser.id);const winner=d.battle.winner_id===currentUser.id;const x=document.createElement('div');x.className='dhy-battle-modal';x.innerHTML=`<div class="dhy-battle-box" style="text-align:center"><div class="dhy-kicker">BATTLE COMPLETE</div><h1 style="margin:8px 0">${winner?'VICTORY':'BATTLE COMPLETE'}</h1><p class="sub">${esc(me?.name||currentUser.name)} scored <b>${me?.score||0}</b></p><button class="btn primary" id="dhyBattleClose">Return to Arena</button></div>`;document.body.appendChild(x);x.querySelector('#dhyBattleClose').onclick=()=>{x.remove();openBattle()}}
 
   function patchProfilePage(){const p=$('#profile');if(!p)return;const buttons=[...p.querySelectorAll('button')];buttons.forEach(b=>{if(/Logout/i.test(b.textContent)){b.textContent='Logout';b.onclick=async()=>{await api()('/auth/logout',{method:'POST'});location.reload()}}});}
+  let booted=false;
   async function boot(){
+    if(booted)return; booted=true;
     css();
-    document.body.classList.remove('dhy-locked');
     try{
       currentUser=await F().refresh();
-      if(!currentUser){location.replace('/');return;}
+      if(!currentUser){
+        document.body.classList.remove('dhy-locked');
+        document.body.insertAdjacentHTML('afterbegin','<div id=\"dhySessionNotice\" style=\"position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#080a0d;color:#fff;padding:20px;text-align:center\"><div style=\"max-width:420px\"><h2>Session required</h2><p style=\"color:#9aa3af\">Your DHYEYA session is no longer available. Please sign in again.</p><button class=\"btn primary\" onclick=\"location.href=\'/\'\">Return to Login</button></div></div>');
+        return;
+      }
       if(currentUser.role==='admin'){location.replace('/admin');return;}
       unlock();
       patchProfilePage();
       const refreshGreeting=()=>hydrate();
       clearInterval(window.__dhyGreetingTimer);
       window.__dhyGreetingTimer=setInterval(refreshGreeting,60000);
-    }catch{location.replace('/');}
+    }catch(e){
+      console.error('DHYEYA boot',e);
+    }
   }
   window.DHYEYA_V3={openBattle,createBattle,acceptBattle,answerBattle,loadBattleLobby};
   document.addEventListener('DOMContentLoaded',boot);
