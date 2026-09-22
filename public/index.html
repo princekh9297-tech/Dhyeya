@@ -5,6 +5,9 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <title>DHYEYA — BPSC Test Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Libre+Baskerville:wght@400;700&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#080a0d;--surface:#101419;--card:#151a20;--card2:#1b2128;
@@ -811,6 +814,77 @@ body[data-appearance="light"] .utility-item .uicon{background:#eef2f6!important}
 body[data-appearance="light"] .mobile-nav{background:rgba(255,255,255,.96)!important}
 body[data-appearance="dark"]{background:#080a0d!important}
 body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
+
+
+/* =========================================================
+   DHYEYA 6-WAY VISUAL THEME CYCLER
+   The existing appearance button now cycles through six complete
+   visual palettes. Theme 4 is the default.
+   ========================================================= */
+:root{
+  --dh-accent:#9f2430;--dh-accent2:#c34a52;--dh-bg:#f8eee9;--dh-surface:#ffffff;--dh-card:#fff9f5;
+  --dh-panel:#4d1118;--dh-panel2:#651b24;--dh-text:#3a1518;--dh-muted:#78666a;--dh-line:rgba(75,25,30,.12);
+  --dh-soft:rgba(159,36,48,.08);--dh-font:Inter,sans-serif;--dh-heading:Libre Baskerville,Georgia,serif;
+}
+body[data-theme="1"]{--dh-accent:#b48832;--dh-accent2:#d5ad5b;--dh-bg:#f4efe5;--dh-surface:#fffdf8;--dh-card:#fffaf0;--dh-panel:#171717;--dh-panel2:#25221d;--dh-text:#28231c;--dh-muted:#756e62;--dh-line:rgba(50,42,30,.13);--dh-soft:rgba(180,136,50,.10);--dh-heading:Manrope,Inter,sans-serif}
+body[data-theme="2"]{--dh-accent:#2869ee;--dh-accent2:#4f88ff;--dh-bg:#edf5ff;--dh-surface:#ffffff;--dh-card:#ffffff;--dh-panel:#061a35;--dh-panel2:#0d2b52;--dh-text:#142540;--dh-muted:#65758d;--dh-line:rgba(19,53,91,.13);--dh-soft:rgba(40,105,238,.09);--dh-heading:Plus Jakarta Sans,Inter,sans-serif}
+body[data-theme="3"]{--dh-accent:#16745f;--dh-accent2:#2a9478;--dh-bg:#edf5f0;--dh-surface:#fffef9;--dh-card:#fffdf7;--dh-panel:#07382d;--dh-panel2:#0c4d3f;--dh-text:#18322b;--dh-muted:#687c75;--dh-line:rgba(20,77,62,.13);--dh-soft:rgba(22,116,95,.09);--dh-heading:DM Sans,Inter,sans-serif}
+body[data-theme="4"]{--dh-accent:#9f2430;--dh-accent2:#c34a52;--dh-bg:#f8eee9;--dh-surface:#ffffff;--dh-card:#fff9f5;--dh-panel:#4d1118;--dh-panel2:#681d27;--dh-text:#3a1518;--dh-muted:#78666a;--dh-line:rgba(75,25,30,.12);--dh-soft:rgba(159,36,48,.08);--dh-heading:Libre Baskerville,Georgia,serif}
+body[data-theme="5"]{--dh-accent:#2f66d9;--dh-accent2:#5a86f0;--dh-bg:#eef1f5;--dh-surface:#ffffff;--dh-card:#ffffff;--dh-panel:#1c2635;--dh-panel2:#29364a;--dh-text:#152238;--dh-muted:#68758a;--dh-line:rgba(28,48,78,.13);--dh-soft:rgba(47,102,217,.09);--dh-heading:Sora,Inter,sans-serif}
+body[data-theme="6"]{--dh-accent:#177d7b;--dh-accent2:#c48a56;--dh-bg:#edf6f4;--dh-surface:#fffdf7;--dh-card:#fbfaf1;--dh-panel:#064b4a;--dh-panel2:#0a6260;--dh-text:#173536;--dh-muted:#687b7b;--dh-line:rgba(20,77,76,.13);--dh-soft:rgba(23,125,123,.09);--dh-heading:Manrope,Inter,sans-serif}
+
+body[data-theme]{
+  --bg:var(--dh-bg)!important;--surface:var(--dh-surface)!important;--card:var(--dh-card)!important;--card2:var(--dh-card)!important;--panel:var(--dh-panel)!important;--elev:var(--dh-surface)!important;
+  --line:var(--dh-line)!important;--text:var(--dh-text)!important;--muted:var(--dh-muted)!important;--gold:var(--dh-accent)!important;--gold2:var(--dh-accent2)!important;
+  --green:#16845b!important;--red:#c84e58!important;--purple:#7259a8!important;--warm:#c84e58!important;--theme-font:var(--dh-font)!important;
+  font-family:var(--dh-font);background:var(--dh-bg)!important;color:var(--dh-text)!important
+}
+body[data-theme] .sidebar{background:linear-gradient(180deg,var(--dh-panel),color-mix(in srgb,var(--dh-panel) 84%,black))!important;border-color:rgba(255,255,255,.10)}
+body[data-theme] .brand b,body[data-theme] .topbar-brand strong{font-family:var(--dh-heading)}
+body[data-theme] .brandmark{color:var(--dh-accent2);border-color:color-mix(in srgb,var(--dh-accent2) 55%,transparent)}
+body[data-theme] .nav button{color:rgba(255,255,255,.72)}
+body[data-theme] .nav button:hover,body[data-theme] .nav button.active{background:rgba(255,255,255,.10);color:#fff}
+body[data-theme] .nav button.active{box-shadow:inset 2px 0 var(--dh-accent2)}
+body[data-theme] .ico,.sidebottom .ico{color:var(--dh-accent2)}
+body[data-theme] .topbar{background:color-mix(in srgb,var(--dh-surface) 92%,transparent)!important;color:var(--dh-text)!important;border-color:var(--dh-line)}
+body[data-theme] .iconbtn,body[data-theme] .appearance-toggle{background:var(--dh-surface)!important;color:var(--dh-text)!important;border-color:var(--dh-line)!important}
+body[data-theme] .avatar{background:var(--dh-soft);color:var(--dh-accent);border-color:var(--dh-line)}
+body[data-theme] .hero{background:radial-gradient(circle at 85% 0,color-mix(in srgb,var(--dh-accent) 15%,transparent),transparent 36%),linear-gradient(135deg,var(--dh-card),var(--dh-bg))!important;border-color:var(--dh-line);box-shadow:0 18px 55px color-mix(in srgb,var(--dh-text) 8%,transparent)}
+body[data-theme] .hero h1,body[data-theme] .title,body[data-theme] h1,body[data-theme] h2,body[data-theme] h3{font-family:var(--dh-heading)}
+body[data-theme] .gold,body[data-theme] .eyebrow,.link{color:var(--dh-accent)!important}
+body[data-theme] .card,body[data-theme] .stat,body[data-theme] .test-card,body[data-theme] .pod,body[data-theme] .day,body[data-theme] .tab,body[data-theme] .quiz-shell,body[data-theme] .navigator,body[data-theme] .resume{background:var(--dh-card)!important;color:var(--dh-text);border-color:var(--dh-line)}
+body[data-theme] .sub,body[data-theme] .stat .label,body[data-theme] .meta,body[data-theme] .field label{color:var(--dh-muted)}
+body[data-theme] .btn{background:var(--dh-surface);color:var(--dh-text);border-color:var(--dh-line)}
+body[data-theme] .btn.primary{background:linear-gradient(135deg,var(--dh-accent),var(--dh-accent2))!important;color:#fff;border-color:transparent}
+body[data-theme] .progress i,.b-gold{background:var(--dh-accent)!important}
+body[data-theme] .progress,.body[data-theme] .bar{background:color-mix(in srgb,var(--dh-text) 10%,transparent)}
+body[data-theme] .searchbar input,body[data-theme] .field input,body[data-theme] .field select{background:var(--dh-surface)!important;color:var(--dh-text)!important;border-color:var(--dh-line)}
+body[data-theme] .option,body[data-theme] .answer-option{background:var(--dh-surface)!important;color:var(--dh-text)!important;border-color:var(--dh-line)!important}
+body[data-theme] .option:hover,body[data-theme] .option.selected,body[data-theme] .answer-option.selected{background:var(--dh-soft)!important;border-color:var(--dh-accent)!important}
+body[data-theme] .qdot{background:var(--dh-surface);color:var(--dh-text);border-color:var(--dh-line)}
+body[data-theme] .qdot.current{border-color:var(--dh-accent);color:var(--dh-accent)}
+body[data-theme] .qdot.done{background:rgba(22,150,91,.13);color:#16845b}
+body[data-theme] .qdot.review{background:rgba(120,89,168,.12);color:#7259a8}
+body[data-theme] .quiz-shell{background:var(--dh-card)!important}
+body[data-theme] .quiz-top{border-color:var(--dh-line)}
+body[data-theme] .qnum{color:var(--dh-accent)}
+body[data-theme] .question-placeholder{border-color:color-mix(in srgb,var(--dh-accent) 35%,transparent)}
+body[data-theme] .question-placeholder strong{color:var(--dh-text)}
+body[data-theme] .quiz-bottom{background:var(--dh-card)!important}
+body[data-theme] .mobile-nav{background:color-mix(in srgb,var(--dh-panel) 96%,black)!important}
+body[data-theme] .mobile-nav button.active{color:var(--dh-accent2)}
+body[data-theme] .modecard,body[data-theme] .modalbox{background:var(--dh-card)!important;color:var(--dh-text);border-color:var(--dh-line)}
+body[data-theme] .close{background:var(--dh-surface);color:var(--dh-text);border-color:var(--dh-line)}
+body[data-theme] .practice-feedback{border-color:var(--dh-line)}
+body[data-theme] .appearance-toggle{font-family:Inter,sans-serif;font-weight:800;font-size:12px;letter-spacing:.02em}
+body[data-theme] .sidebottom{border-color:rgba(255,255,255,.10)}
+body[data-theme] .table th{color:var(--dh-muted)}
+body[data-theme] .table th,body[data-theme] .table td{border-color:var(--dh-line)}
+body[data-theme] .pill{background:var(--dh-soft);color:var(--dh-accent)}
+body[data-theme] .topbar-brand span{color:var(--dh-muted)}
+body[data-theme] .premium-quiz-head{background:linear-gradient(135deg,var(--dh-card),var(--dh-bg));border-color:var(--dh-line)}
+body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{font-family:var(--dh-heading)}
+
 @media(max-width:800px){.appearance-toggle{width:40px;height:40px}.top-actions{gap:7px}}
 </style>
 <style id="dhyeeya-v408-production-hardening">
@@ -996,7 +1070,7 @@ body[data-appearance="dark"] .topbar{background:rgba(8,10,13,.88)!important}
 <span class="hub-icon">☰</span>
 </button><div class="topbar-brand" aria-label="DHYEYA"><strong>DHYEYA</strong><span>BPSC PRELIMS</span></div></div>
 <div class="top-actions">
-<button aria-label="Switch to light mode" class="appearance-toggle" id="appearanceToggle" title="Switch to light mode" type="button">☾</button>
+<button aria-label="Switch theme" class="appearance-toggle" id="appearanceToggle" title="Burgundy + Warm Ivory · Click for next theme" type="button">4</button>
 <div class="avatar">P</div>
 </div>
 </header>
@@ -1252,8 +1326,8 @@ function loadState(){
   try{
     const raw=localStorage.getItem("bpn_premium_state_v1");
     const s=raw?JSON.parse(raw):{};
-    return Object.assign({attempts:[],revision:[],planner:[],sound:true,autosave:true,theme:0,appearance:"dark"},s);
-  }catch(e){return {attempts:[],revision:[],planner:[],sound:true,autosave:true,theme:0,appearance:"dark"}}
+    return Object.assign({attempts:[],revision:[],planner:[],sound:true,autosave:true,theme:4,appearance:4},s);
+  }catch(e){return {attempts:[],revision:[],planner:[],sound:true,autosave:true,theme:4,appearance:4}}
 }
 function saveState(){try{localStorage.setItem("bpn_premium_state_v1",JSON.stringify(state))}catch(e){}}
 
@@ -1273,25 +1347,37 @@ function closeAccessModal(){
 }
 
 
-/* Lively light theme palette */
-
-/* Legacy multi-theme palette removed in V4.0.7. Appearance is intentionally limited to Dark / Light. */
-function setAppearance(mode,notify=true){
-  mode=(mode==='light')?'light':'dark';
-  state.appearance=mode;
-  saveState();
-  document.body.dataset.appearance=mode;
-  const btn=document.getElementById('appearanceToggle');
-  if(btn){
-    const light=mode==='light';
-    btn.textContent=light?'☀':'☾';
-    btn.setAttribute('aria-label',light?'Switch to dark mode':'Switch to light mode');
-    btn.title=light?'Switch to dark mode':'Switch to light mode';
-  }
-  if(notify) toast(lightLabel(mode));
+/* Six-theme visual cycle. Theme 4 (Burgundy + Warm Ivory) is the default. */
+const DHYEYA_THEMES={
+  1:{name:'Obsidian + Champagne',fonts:'Manrope + Inter'},
+  2:{name:'Midnight Navy + Electric Blue',fonts:'Plus Jakarta Sans + Inter'},
+  3:{name:'Deep Forest + Ivory',fonts:'DM Sans + Inter'},
+  4:{name:'Burgundy + Warm Ivory',fonts:'Libre Baskerville + Inter'},
+  5:{name:'Graphite + Cobalt',fonts:'Sora + Inter'},
+  6:{name:'Deep Teal + Sand',fonts:'Manrope + Inter'}
+};
+function getThemeIndex(){
+  const n=Number(state.themeIndex);
+  return Number.isInteger(n)&&n>=1&&n<=6?n:4;
 }
-function lightLabel(mode){return mode==='light'?'Light mode':'Dark mode'}
-function toggleAppearance(){setAppearance((state.appearance||'dark')==='dark'?'light':'dark');}
+function setAppearance(theme,notify=true){
+  const n=Number(theme);
+  const idx=Number.isInteger(n)&&n>=1&&n<=6?n:4;
+  state.themeIndex=idx;
+  state.appearance=idx;
+  saveState();
+  document.body.dataset.theme=String(idx);
+  document.body.removeAttribute('data-appearance');
+  const btn=document.getElementById('appearanceToggle');
+  const meta=DHYEYA_THEMES[idx];
+  if(btn){
+    btn.textContent=String(idx);
+    btn.setAttribute('aria-label','Switch to '+(idx===6?DHYEYA_THEMES[1].name:DHYEYA_THEMES[idx+1].name));
+    btn.title=meta.name+' · '+meta.fonts+' · Click for next theme';
+  }
+  if(notify && typeof toast==='function') toast(meta.name);
+}
+function toggleAppearance(){setAppearance(getThemeIndex()===6?1:getThemeIndex()+1);}
 /* Universal tool-hub behavior: closed on initial render in every orientation. */
 function forceToolsClosed(){
   const panel=document.getElementById('utilityPanel');
@@ -1530,7 +1616,7 @@ const resumeBtn=[...document.querySelectorAll('#dashboard .resume .btn')][0];
 if(resumeBtn)resumeBtn.onclick=()=>resumeLastTest()?null:toast('No unfinished test saved');
 
 /* Restore saved theme. */
-setAppearance(state.appearance||'dark',false);renderPlanner();renderRevision();renderPerformance();
+setAppearance(getThemeIndex(),false);renderPlanner();renderRevision();renderPerformance();
 if(location.hash==='#tests')openPage('tests');
 </script>
 <!-- ₹199 ACCESS POPUP — QR WILL BE ADDED LATER -->
@@ -1566,9 +1652,9 @@ if(location.hash==='#tests')openPage('tests');
 <!-- PREMIUM QUIZ MODALS -->
 <div aria-hidden="true" class="modal" id="reviewModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REVIEW</div><h2>Review Attempt</h2><p class="sub">Jump through the selected questions.</p></div><button class="close" onclick="closeModal('reviewModal')" type="button">×</button></div><div class="review-modal-body" id="reviewModalBody"></div></div></div>
 <div aria-hidden="true" class="modal" id="reportModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REPORT</div><h2>Report this question</h2><p class="sub">Your report is saved locally for follow-up.</p></div><button class="close" onclick="closeModal('reportModal')" type="button">×</button></div><div class="report-grid"><button class="btn" onclick="saveQuestionReport('Wrong answer')" type="button">Wrong answer</button><button class="btn" onclick="saveQuestionReport('Incorrect explanation')" type="button">Incorrect explanation</button><button class="btn" onclick="saveQuestionReport('Typo / formatting')" type="button">Typo / formatting</button><button class="btn" onclick="saveQuestionReport('Duplicate')" type="button">Duplicate</button><button class="btn" onclick="saveQuestionReport('Question unclear')" type="button">Question unclear</button><button class="btn" onclick="saveQuestionReport('Other')" type="button">Other</button></div></div></div>
-<script src="/nexus-foundation.js?v=4.0.8"></script>
-<script src="/nexus-v2.js?v=4.0.8"></script>
-<script src="/dhyeeya-v3.js?v=4.0.8"></script>
+<script src="/nexus-foundation.js?v=4.0.9"></script>
+<script src="/nexus-v2.js?v=4.0.9"></script>
+<script src="/dhyeeya-v3.js?v=4.0.9"></script>
 <script id="dhyeeya-v408-navigation-guard">
 (function(){
   function recover(){
@@ -1584,7 +1670,7 @@ if(location.hash==='#tests')openPage('tests');
     document.querySelectorAll('button').forEach(b=>{if(!b.type)b.type='button';});
     const ab=document.getElementById('appearanceToggle');
     if(ab&&!ab.dataset.bound){ab.dataset.bound='1';ab.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggleAppearance();});}
-    setAppearance(state.appearance||'dark',false);
+    setAppearance(getThemeIndex(),false);
     recover();
   });
   window.addEventListener('error',function(){recover();});
