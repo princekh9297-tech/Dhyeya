@@ -5,6 +5,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
 import crypto from 'node:crypto';
+import multer from 'multer';
+import pdfParse from 'pdf-parse';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -162,7 +164,7 @@ function normalizeImportedQuestion(q, index){
   }else if(typeof answer==='number') answer=Number(answer);
   else throw new Error(`Row ${index}: answer must be A-E, *, null, or a valid option index`);
   if(answer!==null&&(!Number.isInteger(answer)||answer<0||answer>=options.length)) throw new Error(`Row ${index}: answer must be A-E, *, null, or a valid option index`);
-  const id=String(raw.id||`IMP-${Date.now().toString(36)}-${index}-${crypto.randomBytes(3).toString('hex')}`).trim();
+  const fingerprint=crypto.createHash('sha256').update([question_en,JSON.stringify(options)].join('\n').trim().toLowerCase()).digest('hex').slice(0,24); const id=String(raw.id||`IMP-${fingerprint}`).trim();
   const metadata={...(raw.metadata&&typeof raw.metadata==='object'?raw.metadata:{})};
   for(const key of ['category','source_exam','source_page','page','source_image','source_image_url']) if(raw[key]!==undefined) metadata[key]=raw[key];
   return {id,subject:raw.subject||null,topic:raw.topic||null,subtopic:raw.subtopic||null,year:raw.year?Number(raw.year):null,language:raw.language||'english',question_en,question_hi:raw.question_hi||null,options,answer,explanation_en:raw.explanation_en??raw.explanation??null,explanation_hi:raw.explanation_hi??null,difficulty:raw.difficulty||null,source:raw.source||'Admin Question Bank Import',metadata};
@@ -212,6 +214,55 @@ async function importQuestionsToDb(questions,testConfig=null,actor=null){
     return {inserted,updated,test_id:testId,mapped};
   }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }
+
+const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024,files:1}});
+function csvRows(text){
+  const rows=[]; let row=[], cell='', quoted=false;
+  for(let i=0;i<text.length;i++){const c=text[i]; if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){row.push(cell);cell='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);cell='';if(row.some(x=>x.trim()!==''))rows.push(row);row=[];}else cell+=c;}
+  if(cell!==''||row.length){row.push(cell);if(row.some(x=>x.trim()!==''))rows.push(row)}
+  if(!rows.length)return [];
+  const headers=rows.shift().map(x=>x.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_'));
+  return rows.map(r=>Object.fromEntries(headers.map((h,i)=>[h,(r[i]??'').trim()])));
+}
+function splitPdfBlocks(text){
+  const cleaned=String(text||'').replace(/\u00a0/g,' ').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n');
+  return cleaned.split(/\n\s*(?=(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s+)/i).map(x=>x.trim()).filter(Boolean);
+}
+function parsePdfQuestionBlock(block,index){
+  let s=block.replace(/^(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s*/i,'').trim();
+  const answerMatch=s.match(/(?:^|\n)\s*(?:answer|ans|correct\s*answer)\s*[:\-]?\s*([ABCDE])\b/i);
+  const explanationMatch=s.match(/(?:^|\n)\s*(?:explanation|solution)\s*[:\-]?\s*([\s\S]+)$/i);
+  const answer=answerMatch?answerMatch[1].toUpperCase():null;
+  if(answerMatch)s=s.slice(0,answerMatch.index).trim();
+  let explanation=explanationMatch?explanationMatch[1].trim():null;
+  if(explanationMatch)s=s.slice(0,explanationMatch.index).trim();
+  const optRe=/(?:^|\n)\s*([A-E])[.)]\s+/gi, matches=[...s.matchAll(optRe)];
+  if(matches.length<2)return null;
+  const stem=s.slice(0,matches[0].index).trim();
+  const options=matches.map((m,i)=>s.slice(m.index+m[0].length,i+1<matches.length?matches[i+1].index:s.length).trim()).filter(Boolean);
+  if(!stem||options.length<2)return null;
+  let question_type='mcq';
+  if(/match\s+the\s+following|list\s*(i|1).*list\s*(ii|2)/i.test(stem)||/match\s+the\s+following/i.test(s))question_type='match';
+  else if(/assertion\s*[:\-]|reason\s*[:\-]|assertion\s*\(a\).*reason\s*\(r\)/is.test(stem))question_type='assertion_reason';
+  else if(/statement\s*[i1]|following\s+statements|which\s+of\s+the\s+statements/i.test(stem))question_type='statement';
+  else if(/chronolog|arrange.*order|sequence/i.test(stem))question_type='sequence';
+  const metadata={import_parser:'pdf-text',question_type,parse_confidence:answer?'high':'review'};
+  return {id:`PDF-${Date.now().toString(36)}-${index}-${crypto.randomBytes(3).toString('hex')}`,question_en:stem,options,answer,explanation_en:explanation||null,source:'Admin PDF Import',metadata};
+}
+async function parseUploadedFile(file){
+  const name=String(file.originalname||'').toLowerCase();
+  if(name.endsWith('.json')){const data=JSON.parse(file.buffer.toString('utf8'));return Array.isArray(data)?data:(Array.isArray(data.questions)?data.questions:[])}
+  if(name.endsWith('.csv'))return csvRows(file.buffer.toString('utf8'));
+  if(name.endsWith('.pdf')){
+    const parsed=await pdfParse(file.buffer); const blocks=splitPdfBlocks(parsed.text); const out=[]; const held=[];
+    blocks.forEach((b,i)=>{const q=parsePdfQuestionBlock(b,i+1);if(q)out.push(q);else held.push({index:i+1,raw:b.slice(0,2000)})});
+    return {questions:out,held,total_blocks:blocks.length,pages:parsed.numpages,text_chars:parsed.text.length};
+  }
+  throw new Error('Unsupported file. Use PDF, JSON or CSV.');
+}
+app.post('/api/admin/questions/parse-file',auth,admin,upload.single('file'),async(req,res)=>{
+  try{if(!req.file)return res.status(400).json({error:'No file uploaded.'});const parsed=await parseUploadedFile(req.file);const questions=Array.isArray(parsed)?parsed:(parsed.questions||[]);if(!questions.length)return res.status(422).json({error:'No questions could be detected from this file.',held:parsed.held||[]});const normalized=[];for(let i=0;i<questions.length;i++)normalized.push(normalizeImportedQuestion(questions[i],i+1));res.json({ok:true,filename:req.file.originalname,total:normalized.length,questions:normalized,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}})}catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
+});
 app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
   try{
     const input=Array.isArray(req.body)?req.body:(Array.isArray(req.body?.questions)?req.body.questions:null);
