@@ -47,43 +47,6 @@ app.use(express.static(path.join(__dirname,'public'),{index:false,setHeaders:(re
 async function audit(actor,action,target,details={}){try{await pool.query('INSERT INTO audit_logs(actor_user_id,action,target_user_id,details) VALUES($1,$2,$3,$4)',[actor?.id||null,action,target||null,JSON.stringify(details||{})])}catch(e){console.error('audit',e.message)}}
 function makeStudentCode(){return 'DHY-'+new Date().getFullYear().toString().slice(-2)+'-'+crypto.randomBytes(3).toString('hex').toUpperCase()}
 function makePassword(){return crypto.randomBytes(5).toString('base64url')+'@1'}
-async function bootstrapTarkashContent(){
-  const file=path.join(__dirname,'data','tarkash_annual_pyq_plus_2026_validated.json');
-  if(!fs.existsSync(file)) return;
-  const questions=JSON.parse(fs.readFileSync(file,'utf8'));
-  const client=await pool.connect();
-  try{
-    await client.query('BEGIN');
-    const existing=await client.query("SELECT id FROM tests WHERE slug='tarkash-annual-pyq-plus-2026' LIMIT 1");
-    let testId;
-    if(existing.rows[0]){
-      testId=existing.rows[0].id;
-      await client.query(`UPDATE tests SET title=$1,institution=$2,category=$3,year=$4,sequence_no=$5,access_type=$6,duration_seconds=$7,published=TRUE,metadata=$8,updated_at=NOW() WHERE id=$9`,[
-        'Tarkash Annual PYQ Plus — 2026 (High-Confidence Import)','Tarkash','BPSC PYQ Plus',2026,1,'premium',7200,
-        JSON.stringify({source:'Tarkash Annual PYQ Plus English India.pdf',high_confidence_question_count:questions.length,held_for_review:84}),testId
-      ]);
-    }else{
-      const t=(await client.query(`INSERT INTO tests(slug,title,institution,category,year,sequence_no,access_type,duration_seconds,published,question_count,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,TRUE,0,$9) RETURNING id`,[
-        'tarkash-annual-pyq-plus-2026','Tarkash Annual PYQ Plus — 2026 (High-Confidence Import)','Tarkash','BPSC PYQ Plus',2026,1,'premium',7200,
-        JSON.stringify({source:'Tarkash Annual PYQ Plus English India.pdf',high_confidence_question_count:questions.length,held_for_review:84})
-      ])).rows[0];
-      testId=t.id;
-    }
-    let order=1;
-    for(const q of questions){
-      await client.query(`INSERT INTO questions(id,subject,topic,subtopic,year,language,question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty,source,metadata)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-        ON CONFLICT(id) DO UPDATE SET subject=EXCLUDED.subject,topic=EXCLUDED.topic,subtopic=EXCLUDED.subtopic,year=EXCLUDED.year,language=EXCLUDED.language,question_en=EXCLUDED.question_en,question_hi=EXCLUDED.question_hi,options=EXCLUDED.options,answer=EXCLUDED.answer,explanation_en=EXCLUDED.explanation_en,explanation_hi=EXCLUDED.explanation_hi,difficulty=EXCLUDED.difficulty,source=EXCLUDED.source,metadata=EXCLUDED.metadata,updated_at=NOW()`,[
-          q.id,q.subject,q.topic,q.subtopic,q.year,q.language,q.question_en,q.question_hi,JSON.stringify(q.options||[]),q.answer,q.explanation_en,q.explanation_hi,q.difficulty,q.source,JSON.stringify(q.metadata||{})
-      ]);
-      await client.query(`INSERT INTO test_questions(test_id,question_id,sort_order) VALUES($1,$2,$3) ON CONFLICT(test_id,question_id) DO UPDATE SET sort_order=EXCLUDED.sort_order`,[testId,q.id,order++]);
-    }
-    await client.query(`UPDATE tests SET question_count=$1,updated_at=NOW() WHERE id=$2`,[questions.length,testId]);
-    await client.query('COMMIT');
-    console.log(`Tarkash content imported/updated: ${questions.length} high-confidence questions`);
-  }catch(e){await client.query('ROLLBACK');console.error('Tarkash import failed:',e.message)}finally{client.release()}
-}
-
 async function bootstrapAdmin(){if(!process.env.ADMIN_EMAIL||!process.env.ADMIN_PASSWORD)return;const email=process.env.ADMIN_EMAIL.trim().toLowerCase();const found=await pool.query('SELECT id FROM users WHERE email=$1',[email]);if(found.rows[0]){await pool.query("UPDATE users SET role='admin',status='active' WHERE email=$1",[email]);return}const hash=await bcrypt.hash(process.env.ADMIN_PASSWORD,12);await pool.query("INSERT INTO users(student_code,email,password_hash,name,username,role,status) VALUES($1,$2,$3,$4,$5,'admin','active')",[makeStudentCode(),email,hash,process.env.ADMIN_NAME||'BPSC Nexus Admin',process.env.ADMIN_USERNAME||'admin']);console.log('Initial admin created:',email)}
 
 app.get('/api/health',async(_req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:true})}catch(e){res.status(503).json({ok:false,database:false,error:e.message})}});
@@ -109,7 +72,18 @@ app.delete('/api/planner/:id',auth,async(req,res)=>{const r=await pool.query('DE
 
 // Test library + engine
 app.get('/api/tests',auth,async(req,res)=>{const p=[];let s='SELECT * FROM tests WHERE published=TRUE';if(req.query.institution){p.push(req.query.institution);s+=' AND lower(institution)=lower($1)'}s+=' ORDER BY COALESCE(year,0) DESC,COALESCE(sequence_no,999999) ASC,title';res.json({tests:(await pool.query(s,p)).rows})});
-app.get('/api/tests/:id/questions',auth,async(req,res)=>{const q=await pool.query(`SELECT q.*,t.title test_title,t.duration_seconds FROM test_questions tq JOIN questions q ON q.id=tq.question_id JOIN tests t ON t.id=tq.test_id WHERE tq.test_id=$1 AND t.published=TRUE ORDER BY tq.sort_order`,[req.params.id]);res.json({test:q.rows[0]?{id:req.params.id,title:q.rows[0].test_title,duration_seconds:q.rows[0].duration_seconds}:null,questions:q.rows})});
+app.get('/api/tests/:id/questions',auth,async(req,res)=>{
+  const q=await pool.query(`SELECT q.*,t.title test_title,t.duration_seconds FROM test_questions tq JOIN questions q ON q.id=tq.question_id JOIN tests t ON t.id=tq.test_id WHERE tq.test_id=$1 AND t.published=TRUE ORDER BY tq.sort_order`,[req.params.id]);
+  const questions=q.rows.map(row=>{
+    const x={...row};
+    /* Never send a known replacement-character field to the quiz renderer. The
+       clean English/bilingual question remains available for display. */
+    if(typeof x.question_hi==='string' && x.question_hi.includes('�')) x.question_hi=null;
+    if(typeof x.explanation_hi==='string' && x.explanation_hi.includes('�')) x.explanation_hi=null;
+    return x;
+  });
+  res.json({test:q.rows[0]?{id:req.params.id,title:q.rows[0].test_title,duration_seconds:q.rows[0].duration_seconds}:null,questions});
+});
 app.get('/api/pyq/archive',auth,async(_req,res)=>{const q=await pool.query(`SELECT t.id,t.title,t.institution,t.category,t.year,t.sequence_no,t.duration_seconds,t.question_count,t.published,COALESCE((SELECT json_agg(json_build_object('subject',s.subject,'count',s.count) ORDER BY s.subject) FROM (SELECT COALESCE(q.subject,'Uncategorized') subject,COUNT(*)::int count FROM test_questions tq JOIN questions q ON q.id=tq.question_id WHERE tq.test_id=t.id GROUP BY COALESCE(q.subject,'Uncategorized')) s),'[]'::json) AS subjects FROM tests t WHERE t.published=TRUE AND (lower(coalesce(t.category,''))='bpsc pyq archive' OR (lower(coalesce(t.institution,''))='bpsc' AND lower(coalesce(t.title,'')) LIKE '%pyq%')) ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title`);res.json({tests:q.rows})});
 app.post('/api/attempts',auth,async(req,res)=>{const x=req.body||{};const total=Number(x.total_questions||0),correct=Number(x.correct||0),incorrect=Number(x.incorrect||0),unattempted=Number(x.unattempted??Math.max(0,total-correct-incorrect));const accuracy=total?Number(((correct/total)*100).toFixed(2)):0;const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query(`INSERT INTO test_attempts(user_id,test_id,mode,score,total_questions,correct,incorrect,unattempted,accuracy,time_taken_seconds,started_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[req.user.id,x.test_id||'unknown',x.mode==='exam'?'exam':'practice',Number(x.score||0),total,correct,incorrect,unattempted,accuracy,Number(x.time_taken_seconds||0),x.started_at||null]);const attempt=q.rows[0];for(const qa of (Array.isArray(x.question_attempts)?x.question_attempts:[])){await client.query(`INSERT INTO question_attempts(user_id,attempt_id,question_id,selected_option,correct_option,is_correct,is_bookmarked,marked_for_review,time_spent_seconds) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[req.user.id,attempt.id,qa.question_id,qa.selected_option??null,qa.correct_option??null,qa.is_correct==null?null:!!qa.is_correct,!!qa.is_bookmarked,!!qa.marked_for_review,Number(qa.time_spent_seconds||0)]);if(qa.is_correct===false&&qa.question_id){await client.query(`INSERT INTO revision_items(user_id,question_id,source,reason,next_revision_date) VALUES($1,$2,$3,$4,CURRENT_DATE+1) ON CONFLICT(user_id,question_id) DO UPDATE SET reason='answered incorrectly',next_revision_date=CURRENT_DATE+1,updated_at=NOW()`,[req.user.id,qa.question_id,x.test_id||'test','answered incorrectly'])}}
 const xp=Math.min(50,Math.max(10,Math.round(correct*2)));await client.query('INSERT INTO xp_ledger(user_id,action,source_id,xp_amount) VALUES($1,$2,$3,$4)',[req.user.id,'test_completed',attempt.id,xp]);const u=await client.query('UPDATE users SET xp=xp+$1,level=((xp+$1)/500)::int+1,last_activity_date=CURRENT_DATE,streak_days=CASE WHEN last_activity_date=CURRENT_DATE-1 THEN streak_days+1 WHEN last_activity_date=CURRENT_DATE THEN streak_days ELSE 1 END,updated_at=NOW() WHERE id=$2 RETURNING xp,level,streak_days',[xp,req.user.id]);await client.query("UPDATE quiz_sessions SET status='completed',updated_at=NOW() WHERE user_id=$1 AND status='in_progress' AND test_id=$2",[req.user.id,String(x.test_id||'')]);await client.query('COMMIT');res.status(201).json({attempt,awarded_xp:xp,student:u.rows[0]})}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message})}finally{client.release()}});
@@ -174,7 +148,7 @@ function normalizeImportedQuestion(q, index){
   const fingerprint=crypto.createHash('sha256').update([question_en,JSON.stringify(options)].join('\n').trim().toLowerCase()).digest('hex').slice(0,24); const id=String(raw.id||`IMP-${fingerprint}`).trim();
   const metadata={...(raw.metadata&&typeof raw.metadata==='object'?raw.metadata:{})};
   for(const key of ['category','source_exam','source_page','page','source_image','source_image_url']) if(raw[key]!==undefined) metadata[key]=raw[key];
-  const suppliedHi=cleanImportedField(raw.question_hi||''); const question_hi=(suppliedHi&&!suppliedHi.includes('�'))?suppliedHi:(combined.hi||null); const expCombined=splitImportedBilingual(raw.explanation_en??raw.explanation??''); const suppliedExpHi=cleanImportedField(raw.explanation_hi||''); const explanation_en=expCombined.en||null; const explanation_hi=(suppliedExpHi&&!suppliedExpHi.includes('�'))?suppliedExpHi:(expCombined.hi||null); return {id,subject:raw.subject||null,topic:raw.topic||null,subtopic:raw.subtopic||null,year:raw.year?Number(raw.year):null,language:raw.language||'bilingual',question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty:raw.difficulty||null,source:raw.source||'Admin Question Bank Import',metadata};
+  const suppliedHi=cleanImportedField(raw.question_hi||''); const cleanCombinedHi=combined.hi&&!combined.hi.includes('�')?combined.hi:null; const question_hi=(suppliedHi&&!suppliedHi.includes('�'))?suppliedHi:cleanCombinedHi; const expCombined=splitImportedBilingual(raw.explanation_en??raw.explanation??''); const suppliedExpHi=cleanImportedField(raw.explanation_hi||''); const cleanExpCombinedHi=expCombined.hi&&!expCombined.hi.includes('�')?expCombined.hi:null; const explanation_en=expCombined.en||null; const explanation_hi=(suppliedExpHi&&!suppliedExpHi.includes('�'))?suppliedExpHi:cleanExpCombinedHi; return {id,subject:raw.subject||null,topic:raw.topic||null,subtopic:raw.subtopic||null,year:raw.year?Number(raw.year):null,language:raw.language||'bilingual',question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty:raw.difficulty||null,source:raw.source||'Admin Question Bank Import',metadata};
 }
 async function importQuestionsToDb(questions,testConfig=null,actor=null){
   const client=await pool.connect(); let inserted=0,updated=0,testId=null,mapped=0;
@@ -474,7 +448,6 @@ app.listen(port,async()=>{
   try{
     await initializeDatabase();
     await bootstrapAdmin();
-    await bootstrapTarkashContent();
     console.log('DHYEYA running on :'+port);
   }catch(e){
     console.error('Startup initialization failed:',e);

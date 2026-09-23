@@ -22,7 +22,7 @@ Consolidated authentication/session/profile/admin update.
 ## Ongoing Question Bank Management
 After the first deployment, questions do not need to be added through GitHub. Sign in as Admin → Question Bank. Upload JSON or CSV, preview the detected questions, and import them directly into PostgreSQL. Existing IDs are updated; new IDs are inserted. You can optionally create/update a test and link the imported questions to it.
 
-Templates: `data/question_import_template.json` and `data/question_import_template.csv`.
+No bundled question bank is required. Production questions are stored in PostgreSQL and are added/updated through the Admin Question Bank importer. PDF, JSON and CSV files are processed in memory during import and are not required by the student application after import.
 
 ## V3.9 — Large BPSC PYQ Archive
 
@@ -36,3 +36,13 @@ Templates: `data/question_import_template.json` and `data/question_import_templa
 
 ## Answer handling
 The Question Bank importer accepts A-E, zero-based numeric option indexes, `*`, null, and empty answers. `*`, null, and empty answers are stored as SQL NULL. Five-option questions are supported. Questions with NULL answers remain attemptable but are excluded from correct/incorrect scoring; Practice Mode labels them “No valid answer.”
+
+
+## V4.2.5 — Database-Only Question Source
+
+- Removed the legacy startup bootstrap that loaded the Tarkash question JSON from the repository.
+- Removed the bundled `data/` question-bank files from the deployment package.
+- PostgreSQL is now the sole production source of question/test content.
+- Admin PDF/JSON/CSV imports continue to write directly to PostgreSQL.
+- Existing database content is not deleted, reset, or migrated by this cleanup.
+- A fresh deployment starts with the database schema/admin setup; questions are added through Admin → Question Bank.
