@@ -332,6 +332,21 @@ app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
     res.json({ok:true,total:normalized.length,...result});
   }catch(e){res.status(400).json({error:e.message||'Question import failed.'})}
 });
+app.get('/api/admin/questions/import-history',auth,admin,async(_req,res)=>{
+  try{
+    const r=await pool.query(`SELECT a.created_at, COALESCE(u.name,u.username,u.email,'Admin') AS actor_name,
+      COALESCE((a.details->>'inserted')::int,0)+COALESCE((a.details->>'updated')::int,0) AS total,
+      COALESCE((a.details->>'inserted')::int,0) AS inserted,
+      COALESCE((a.details->>'updated')::int,0) AS updated,
+      t.title AS test_id
+      FROM audit_logs a
+      LEFT JOIN users u ON u.id=a.actor_user_id
+      LEFT JOIN tests t ON t.id=CASE WHEN COALESCE(a.details->>'test_id','')<>'' THEN (a.details->>'test_id')::uuid ELSE NULL END
+      WHERE a.action='question_bank_import'
+      ORDER BY a.created_at DESC LIMIT 15`);
+    res.json({ok:true,imports:r.rows});
+  }catch(e){res.status(500).json({error:e.message||'Unable to load import history.'})}
+});
 app.get('/api/admin/encoding-diagnostics',auth,admin,async(_req,res)=>{
   try{
     const enc=await pool.query("SELECT current_database() AS database, pg_encoding_to_char(encoding) AS server_encoding FROM pg_database WHERE datname=current_database()");
