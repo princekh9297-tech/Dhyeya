@@ -896,6 +896,34 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 #quiz .quiz-action-cluster{display:flex;gap:8px;flex-wrap:wrap;}
 @media(max-width:600px){#quiz .quiz-actions-row>.btn{min-height:44px;}#quiz .quiz-action-cluster .btn{min-height:42px;}#quiz .option{min-height:56px;padding:14px 13px;}#quiz .premium-qtop{position:sticky;top:0;z-index:50;}}
 </style>
+<style id="dhyeeya-v409-structured-questions">
+#quiz .question-hi{margin:10px 0 0;padding:10px 12px;border-left:3px solid var(--gold);background:color-mix(in srgb,var(--gold) 5%,var(--card));border-radius:8px;color:var(--muted);font-size:14px;line-height:1.65}
+#quiz .structured-match{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px auto 8px;max-width:900px}
+#quiz .structured-list{border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--card2) 96%,transparent);overflow:hidden}
+#quiz .structured-list-title,#quiz .structured-block-title{padding:10px 13px;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);background:color-mix(in srgb,var(--gold) 6%,var(--card));border-bottom:1px solid var(--line)}
+#quiz .structured-item{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;padding:11px 13px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.5;color:var(--text)}
+#quiz .structured-item:last-child{border-bottom:0}
+#quiz .structured-label{font-weight:800;color:var(--gold);text-align:center}
+#quiz .structured-statements{max-width:900px;margin:18px auto 8px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:color-mix(in srgb,var(--card2) 96%,transparent)}
+#quiz .statement-box{display:grid;grid-template-columns:34px minmax(0,1fr);gap:11px;padding:13px 14px;border-bottom:1px solid var(--line);font-size:14px;line-height:1.6;color:var(--text)}
+#quiz .statement-box:last-child{border-bottom:0}
+#quiz .statement-box.single{display:grid}
+#quiz .statement-number{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--dh-soft,var(--card2));color:var(--gold);font-weight:800}
+#quiz .structured-assertion{display:grid;gap:10px;max-width:900px;margin:18px auto 8px}
+#quiz .assertion-box,#quiz .reason-box{padding:15px 16px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--card2) 96%,transparent);font-size:14px;line-height:1.6;color:var(--text)}
+#quiz .assertion-box{border-left:3px solid var(--gold)}
+#quiz .reason-box{border-left:3px solid var(--purple)}
+#quiz .assertion-title{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);margin-bottom:7px}
+#quiz .reason-box .assertion-title{color:var(--purple)}
+#quiz .practice-feedback{position:relative;max-width:900px;margin:18px auto 0;padding:0!important;border:1px solid var(--line)!important;border-radius:14px!important;background:var(--card)!important;box-shadow:0 8px 24px color-mix(in srgb,var(--dh-text) 7%,transparent);overflow:hidden;color:var(--text)!important}
+#quiz .practice-feedback::before{content:'Explanation';display:block;padding:10px 15px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--gold) 6%,var(--card));font-size:10px;font-weight:800;letter-spacing:.10em;text-transform:uppercase;color:var(--gold)}
+#quiz .practice-feedback.ok::before{content:'Correct · Explanation'}
+#quiz .practice-feedback.bad::before{content:'Incorrect · Explanation'}
+#quiz .practice-feedback.neutral::before{content:'Explanation'}
+#quiz .practice-feedback.ok,#quiz .practice-feedback.bad,#quiz .practice-feedback.neutral{padding:0 15px 15px!important}
+#quiz .practice-feedback.ok b:first-child,#quiz .practice-feedback.bad b:first-child,#quiz .practice-feedback.neutral b:first-child{display:inline-block;margin-top:12px;margin-right:4px}
+@media(max-width:700px){#quiz .structured-match{grid-template-columns:1fr}.structured-item,.statement-box,.assertion-box,.reason-box{font-size:13px}}
+</style>
 <style id="dhyeeya-v408-interaction-fix">
 /* V4.0.3 interaction/layering hardening */
 #utilityPanel{z-index:2147482000!important;}
@@ -1458,6 +1486,93 @@ function startQuiz(mode){
   }else document.getElementById('quizTimer').textContent='No Timer';
 }
 let lastSubmittedQuiz=null;
+function quizQuestionType(q){
+  const meta=q?.metadata||{};
+  const raw=String(q?.question_type||meta.question_type||meta.questionType||'').toLowerCase();
+  const text=String(q?.question||q?.question_en||'');
+  if(raw.includes('match')) return 'match';
+  if(/list\s*[-–—]?\s*i\b[\s\S]*list\s*[-–—]?\s*ii\b/i.test(text)) return 'match';
+  if(raw.includes('assertion') || raw.includes('reason')) return 'assertion';
+  if(raw.includes('statement')) return 'statement';
+  if(/assertion\s*\(?a\)?[\s\S]{0,300}reason\s*\(?[or]\)?/i.test(text)) return 'assertion';
+  if(/(?:consider|following|which of).*statements?[\s\S]{0,500}\n\s*1[.)]\s+/i.test(text)) return 'statement';
+  return 'mcq';
+}
+function cleanQuizLine(v){return String(v||'').replace(/\s+/g,' ').trim();}
+function stripQuizInstructions(v){return String(v||'').replace(/\n?\s*(?:codes?|select\s+the\s+correct|choose\s+the\s+correct|which\s+of\s+the\s+following|out\s+of\s+these|options?\s+given)[\s\S]*$/i,'').trim();}
+function extractMatchLists(raw){
+  const text=String(raw||'').replace(/\r/g,'');
+  const classify=(block)=>{
+    block=stripQuizInstructions(block);
+    const markerRe=/(?<![A-Za-z0-9])(\(?[A-Za-z]{1,3}\)?|\(?10\)?|\(?[1-9]\)?|\(?[ivxIVX]+\)?)\s*[.)\-–—:]\s*/g;
+    const matches=[];let mm;
+    while((mm=markerRe.exec(block)))matches.push({start:mm.index,pos:mm.index+mm[0].length,label:mm[1].replace(/[()]/g,'')});
+    if(!matches.length)return null;
+    const items=matches.map((x,i)=>({label:x.label,text:cleanQuizLine(block.slice(x.pos,i+1<matches.length?matches[i+1].start:block.length))})).filter(x=>x.text);
+    const isNum=x=>/^\d+$/.test(x.label),isLower=x=>/^[a-d]$/.test(x.label),isUpper=x=>/^[A-Z]{1,3}$/.test(x.label),isRoman=x=>/^[IVX]+$/i.test(x.label);
+    const nums=items.filter(isNum),lower=items.filter(isLower),upper=items.filter(isUpper),roman=items.filter(isRoman);
+    if(lower.length&&nums.length)return {left:lower.slice(0,10),right:nums.slice(0,10)};
+    if(lower.length&&(upper.length||roman.length))return {left:lower.slice(0,10),right:[...upper,...roman].slice(0,10)};
+    if(nums.length&&roman.length)return {left:nums.slice(0,10),right:roman.slice(0,10)};
+    if(nums.length&&upper.length)return {left:nums.slice(0,10),right:upper.slice(0,10)};
+    return null;
+  };
+  const m1s=[...text.matchAll(/list\s*[-–—]?\s*(?:i|1|f)\b/gi)];
+  if(m1s.length){
+    const m1=m1s[m1s.length-1],after1=m1.index+m1[0].length;
+    const m2=text.slice(after1).match(/list\s*[-–—]?\s*(?:ii|2)\b/i);
+    if(m2){let block=text.slice(after1);block=block.replace(/list\s*[-–—]?\s*(?:ii|2)\b/i,'');const parsed=classify(block);if(parsed)return parsed;}
+  }
+  if(/match\s+(?:the\s+)?following/i.test(text))return classify(text);
+  return null;
+}
+function extractStatementItems(raw){
+  const text=String(raw||'').replace(/\r/g,'');
+  const marker=/(?:^|\n)\s*(?:(\d+)[.)]|\(?([A-Z])\)?(?:[.:]|(?=\s))|(?:Statement\s+)([IVX]+)[:.]|\(?([IVX]+)\)?[.:])\s+/g;
+  const all=[];let m;while((m=marker.exec(text)))all.push({start:m.index,pos:m.index+m[0].length,label:m[1]||m[2]||m[3]||m[4]});
+  if(!all.length)return [];
+  const start=all[0].start;let end=text.length;const tail=text.slice(start);const stop=tail.search(/\s+(?:out\s+of\s+these|which\s+of\s+the\s+above|which\s+of\s+the\s+following|which\s+one\s+of\s+the\s+following|select\s+the\s+correct|choose\s+the\s+correct|codes?\s*:|choose\s+the\s+most\s+appropriate|options?\s+given)/i);if(stop>0)end=start+stop;
+  const inRange=all.filter(x=>x.start<end);return inRange.map((x,i)=>({label:x.label,text:cleanQuizLine(text.slice(x.pos,i+1<inRange.length?inRange[i+1].start:end))})).filter(x=>x.text);
+}
+function extractAssertionReason(raw){
+  const text=String(raw||'').replace(/\r/g,'');
+  const am=text.match(/assertion\s*(?:\(?\s*a\s*\)?|\[\s*a\s*\])\s*[:\-–—]?\s*/i);if(!am)return null;
+  const tail=text.slice(am.index+am[0].length),rm=tail.match(/\n?\s*reason\s*(?:\(?\s*[or]\s*\)?|\[\s*[or]\s*\])\s*[:\-–—]?\s*/i);if(!rm)return null;
+  const assertion=cleanQuizLine(tail.slice(0,rm.index));const rest=tail.slice(rm.index+rm[0].length);
+  const end=rest.search(/\s+(?:which\s+of\s+the\s+options|select\s+the\s+correct|choose\s+the\s+correct|in\s+the\s+light|options?\s+given|choose\s+the\s+most\s+appropriate)/i);
+  const reason=cleanQuizLine(end>=0?rest.slice(0,end):rest);return assertion&&reason?{assertion,reason}:null;
+}
+function renderStructuredStem(q){
+  const raw=String(q?.question||q?.question_en||'');
+  const type=quizQuestionType(q);let stem=raw,structure='';
+  const esc=escapeHtml;
+  if(type==='match'){
+    const parsed=extractMatchLists(raw);
+    if(parsed){
+      const firsts=[raw.search(/list\s*[-–—]?\s*(?:i|1|f)\b/i),raw.search(/list\s*[-–—]?\s*(?:ii|2)\b/i)].filter(x=>x>=0);const cut=firsts.length?Math.min(...firsts):0;
+      stem=cleanQuizLine(cut>0?raw.slice(0,cut):'Match the following and select the correct answer.');
+      const card=(title,items,cls)=>`<div class="structured-list ${cls}"><div class="structured-list-title">${title}</div>${items.map(x=>`<div class="structured-item"><span class="structured-label">${esc(x.label)}</span><span>${esc(x.text)}</span></div>`).join('')}</div>`;
+      structure=`<div class="structured-match">${card('List 1',parsed.left,'list-one')}${card('List 2',parsed.right,'list-two')}</div>`;
+    }
+  }else if(type==='statement'){
+    const items=extractStatementItems(raw);
+    if(!items.length){
+      stem=cleanQuizLine(raw);
+      structure=`<div class="structured-statements"><div class="structured-block-title">Statement</div><div class="statement-box single"><span class="statement-number">•</span><span>${esc(raw)}</span></div></div>`;
+    }else{
+      const first=raw.search(/(?:\n|^)\s*(?:\d+[.)]|\(?[A-Z]\)?(?:[.:]|\s)|Statement\s+[IVX]+[:.])\s*/);stem=cleanQuizLine(first>0?raw.slice(0,first):raw);
+      structure=`<div class="structured-statements"><div class="structured-block-title">Statements</div>${items.map(x=>`<div class="statement-box"><span class="statement-number">${esc(x.label)}</span><span>${esc(x.text)}</span></div>`).join('')}</div>`;
+    }
+  }else if(type==='assertion'){
+    const ar=extractAssertionReason(raw);
+    if(ar){
+      const am=raw.search(/assertion\s*\(?a\)?\s*[:\-–—]?\s*/i);stem=cleanQuizLine(am>0?raw.slice(0,am):'Consider the following statements:');
+      structure=`<div class="structured-assertion"><div class="assertion-box"><div class="assertion-title">Assertion (A)</div><div>${esc(ar.assertion)}</div></div><div class="reason-box"><div class="assertion-title">Reason (R)</div><div>${esc(ar.reason)}</div></div></div>`;
+    }
+  }
+  const bilingual=q?.questionHi?`<div class="question-hi">${esc(q.questionHi)}</div>`:'';
+  return {type,stem,structure,bilingual};
+}
 function renderQuestion(){
   const q=quiz.questions[quiz.index]; if(!q)return;
   const total=quiz.questions.length||1, pct=Math.round(((quiz.index+1)/total)*100);
@@ -1475,7 +1590,7 @@ function renderQuestion(){
   const area=document.getElementById('questionArea');
   area.className=''; area.style.maxWidth='920px';area.style.margin='28px auto 10px';area.style.textAlign='left';
   const qMeta=[q.subject, q.year||window.__nexusServerQuiz?.test?.year, q.source_exam||q.source, q.topic].filter(Boolean).map(escapeHtml).join(' · ');
-  area.innerHTML=`<div class="eyebrow">${escapeHtml(q.subject||'GENERAL')}</div><div class="question-source-line">${qMeta||'PYQ ARCHIVE'}</div><h2>${escapeHtml(q.question||q.question_en||'')}</h2>`;
+  const structured=renderStructuredStem(q); area.innerHTML=`<div class="eyebrow">${escapeHtml(q.subject||'GENERAL')}</div><div class="question-source-line">${qMeta||'PYQ ARCHIVE'}</div><h2>${escapeHtml(structured.stem)}</h2>${structured.bilingual}${structured.structure}`;
   const box=document.getElementById('options');box.innerHTML='';
   (Array.isArray(q.options)?q.options:[]).forEach((opt,i)=>{
     const b=document.createElement('button');b.type='button';b.className='option answer-option';
@@ -1652,9 +1767,9 @@ if(location.hash==='#tests')openPage('tests');
 <!-- PREMIUM QUIZ MODALS -->
 <div aria-hidden="true" class="modal" id="reviewModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REVIEW</div><h2>Review Attempt</h2><p class="sub">Jump through the selected questions.</p></div><button class="close" onclick="closeModal('reviewModal')" type="button">×</button></div><div class="review-modal-body" id="reviewModalBody"></div></div></div>
 <div aria-hidden="true" class="modal" id="reportModal"><div class="modalbox premium-modal"><div class="modalhead"><div><div class="eyebrow">QUESTION REPORT</div><h2>Report this question</h2><p class="sub">Your report is saved locally for follow-up.</p></div><button class="close" onclick="closeModal('reportModal')" type="button">×</button></div><div class="report-grid"><button class="btn" onclick="saveQuestionReport('Wrong answer')" type="button">Wrong answer</button><button class="btn" onclick="saveQuestionReport('Incorrect explanation')" type="button">Incorrect explanation</button><button class="btn" onclick="saveQuestionReport('Typo / formatting')" type="button">Typo / formatting</button><button class="btn" onclick="saveQuestionReport('Duplicate')" type="button">Duplicate</button><button class="btn" onclick="saveQuestionReport('Question unclear')" type="button">Question unclear</button><button class="btn" onclick="saveQuestionReport('Other')" type="button">Other</button></div></div></div>
-<script src="/nexus-foundation.js?v=4.0.9"></script>
-<script src="/nexus-v2.js?v=4.0.9"></script>
-<script src="/dhyeeya-v3.js?v=4.0.9"></script>
+<script src="/nexus-foundation.js?v=4.1.0"></script>
+<script src="/nexus-v2.js?v=4.1.0"></script>
+<script src="/dhyeeya-v3.js?v=4.1.0"></script>
 <script id="dhyeeya-v408-navigation-guard">
 (function(){
   function recover(){
