@@ -923,6 +923,11 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 #quiz .practice-feedback.ok,#quiz .practice-feedback.bad,#quiz .practice-feedback.neutral{padding:0 15px 15px!important}
 #quiz .practice-feedback.ok b:first-child,#quiz .practice-feedback.bad b:first-child,#quiz .practice-feedback.neutral b:first-child{display:inline-block;margin-top:12px;margin-right:4px}
 @media(max-width:700px){#quiz .structured-match{grid-template-columns:1fr}.structured-item,.statement-box,.assertion-box,.reason-box{font-size:13px}}
+
+/* Theme switch confirmation — subtle, temporary, non-blocking. */
+#dhyeeya-theme-indicator{position:fixed;top:76px;right:18px;z-index:2147483000;pointer-events:none;opacity:0;transform:translateY(-6px);padding:9px 12px;border:1px solid var(--dh-line,var(--line));border-radius:10px;background:color-mix(in srgb,var(--dh-card,var(--card)) 94%,transparent);color:var(--dh-text,var(--text));box-shadow:0 10px 28px rgba(0,0,0,.14);font:700 11px/1.2 Inter,sans-serif;letter-spacing:.02em;transition:opacity .16s ease,transform .16s ease}
+#dhyeeya-theme-indicator.show{opacity:1;transform:translateY(0)}
+@media(max-width:600px){#dhyeeya-theme-indicator{top:62px;right:12px;font-size:10px;padding:8px 10px}}
 </style>
 <style id="dhyeeya-v408-interaction-fix">
 /* V4.0.3 interaction/layering hardening */
@@ -1027,6 +1032,11 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 #quiz .qdot.current{border:2px solid var(--gold);box-shadow:none;color:var(--gold);font-weight:800}
 #quiz .qdot.done{background:color-mix(in srgb,var(--green) 12%,var(--card));color:var(--green)}
 #quiz .qdot.review{background:color-mix(in srgb,var(--purple) 12%,var(--card));color:var(--purple)}
+#quiz .nav-legend .dot.current{background:var(--dh-accent,var(--gold))}
+#quiz .nav-legend .dot.review{background:#d94b4b}
+#quiz .qdot.review{background:color-mix(in srgb,#d94b4b 14%,var(--card));color:#c63f3f;border-color:color-mix(in srgb,#d94b4b 35%,var(--line))}
+#quiz .qdot.current{background:var(--dh-accent,var(--gold));color:#fff;border-color:var(--dh-accent,var(--gold))}
+#quiz .qdot.done{background:color-mix(in srgb,#16965b 14%,var(--card));color:#16845b;border-color:color-mix(in srgb,#16965b 30%,var(--line))}
 #quiz .premium-navigator>.btn.primary{height:44px;border-radius:10px;font-size:12px}
 #quiz .timer-critical{animation:none!important}
 #quiz #quizTimer.timer-warn{box-shadow:none}
@@ -1317,7 +1327,7 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 <div class="practice-feedback" id="feedback"></div>
 <div class="quiz-actions-row"><button class="btn" onclick="prevQuestion()" type="button">← Previous</button><button class="btn" onclick="clearResponse()" type="button">Clear Response</button><div class="quiz-action-cluster"><button class="btn" id="bookmarkBtn" onclick="toggleBookmark()" type="button">🔖 Bookmark</button><button class="btn" id="reviewBtn" onclick="toggleReview()" type="button">Mark Review</button><button class="btn" id="reportBtn" onclick="reportCurrentQuestion()" type="button">⚠ Report</button></div><button class="btn primary" onclick="nextQuestion()" type="button">Save &amp; Next →</button></div>
 </div>
-<aside class="navigator premium-navigator"><div class="nav-head"><div><h3>Question Navigator</h3><p class="sub">Jump to any question and track your attempt.</p></div><button class="nav-mobile-close" onclick="closeQuizNavigator()" type="button">×</button></div><div class="nav-legend"><span><i class="dot answered"></i>Answered</span><span><i class="dot review"></i>Review</span><span><i class="dot empty"></i>Unanswered</span></div><div class="qgrid" id="qgrid"></div><button class="btn primary" onclick="openSubmitModal()" style="width:100%;margin-top:15px" type="button">Submit Test</button></aside>
+<aside class="navigator premium-navigator"><div class="nav-head"><div><h3>Question Navigator</h3><p class="sub">Jump to any question and track your attempt.</p></div><button class="nav-mobile-close" onclick="closeQuizNavigator()" type="button">×</button></div><div class="nav-legend"><span><i class="dot answered"></i>Answered</span><span><i class="dot current"></i>Current</span><span><i class="dot review"></i>Marked for Review</span><span><i class="dot empty"></i>Not Attempted</span></div><div class="qgrid" id="qgrid"></div><button class="btn primary" onclick="openSubmitModal()" style="width:100%;margin-top:15px" type="button">Submit Test</button></aside>
 </div>
 </div>
 <div class="quiz-nav-overlay" id="quizNavOverlay" onclick="closeQuizNavigator()"></div>
@@ -1330,7 +1340,7 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 </section>
 </main>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast"></div><div id="dhyeeya-theme-indicator" aria-live="polite"></div>
 <script>
 /* BPSC NEXUS functional UI engine
    Question data is intentionally isolated in DEMO_QUESTIONS.
@@ -1403,7 +1413,15 @@ function setAppearance(theme,notify=true){
     btn.setAttribute('aria-label','Switch to '+(idx===6?DHYEYA_THEMES[1].name:DHYEYA_THEMES[idx+1].name));
     btn.title=meta.name+' · '+meta.fonts+' · Click for next theme';
   }
-  if(notify && typeof toast==='function') toast(meta.name);
+  if(notify){
+    const indicator=document.getElementById('dhyeeya-theme-indicator');
+    if(indicator){
+      indicator.textContent='Theme '+idx+' · '+meta.name;
+      indicator.classList.add('show');
+      clearTimeout(window.__dhyeeyaThemeIndicatorTimer);
+      window.__dhyeeyaThemeIndicatorTimer=setTimeout(()=>indicator.classList.remove('show'),1500);
+    }
+  }
 }
 function toggleAppearance(){setAppearance(getThemeIndex()===6?1:getThemeIndex()+1);}
 /* Universal tool-hub behavior: closed on initial render in every orientation. */
@@ -1630,7 +1648,17 @@ function toggleBookmark(){const id=quiz.questions[quiz.index].id;quiz.bookmarks[
 function toggleReview(){const id=quiz.questions[quiz.index].id;quiz.reviews[id]=!quiz.reviews[id];saveResume();renderQuestion();toast(quiz.reviews[id]?'Marked for review':'Review mark removed')}
 function renderNavigator(){
   const box=document.getElementById('qgrid');if(!box)return;box.innerHTML='';
-  quiz.questions.forEach((q,i)=>{const b=document.createElement('button');b.type='button';const answered=quiz.answers[q.id]!==undefined&&quiz.answers[q.id]!==null;b.className='qdot '+(i===quiz.index?'current ':'')+(answered?'done ':'')+(quiz.reviews[q.id]?'review':'');b.textContent=i+1;b.onclick=()=>{quiz.index=i;renderQuestion();closeQuizNavigator()};box.appendChild(b)})
+  quiz.questions.forEach((q,i)=>{
+    const b=document.createElement('button');b.type='button';
+    const answered=quiz.answers[q.id]!==undefined&&quiz.answers[q.id]!==null;
+    const review=!!quiz.reviews[q.id];
+    // Visual priority: Current > Marked for Review > Answered > Not Attempted.
+    b.className='qdot '+(i===quiz.index?'current':review?'review':answered?'done':'');
+    b.textContent=i+1;
+    b.setAttribute('aria-label',`Question ${i+1}${i===quiz.index?' · Current':''}${review?' · Marked for review':''}${answered?' · Answered':''}`);
+    b.onclick=()=>{quiz.index=i;renderQuestion();closeQuizNavigator()};
+    box.appendChild(b)
+  })
 }
 function openQuizNavigator(){const nav=document.querySelector('.premium-navigator');if(nav)nav.classList.add('mobile-open');document.getElementById('quizNavOverlay')?.classList.add('show')}
 function closeQuizNavigator(){document.querySelector('.premium-navigator')?.classList.remove('mobile-open');document.getElementById('quizNavOverlay')?.classList.remove('show')}
