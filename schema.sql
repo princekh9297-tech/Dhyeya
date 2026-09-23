@@ -254,16 +254,3 @@ ALTER TABLE battle_answers ADD COLUMN IF NOT EXISTS answered_at TIMESTAMPTZ DEFA
 CREATE INDEX IF NOT EXISTS idx_battle_rooms_updated ON battle_rooms(updated_at DESC);
 
 
-CREATE TABLE IF NOT EXISTS support_tickets (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  subject TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
-  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE TABLE IF NOT EXISTS support_messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
-  sender_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, sender_role TEXT NOT NULL CHECK (sender_role IN ('student','admin')),
-  message TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_support_tickets_user_status ON support_tickets(user_id,status,updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id,created_at ASC);
