@@ -40,7 +40,7 @@ app.get('/',async(req,res)=>{
   }catch{clearAuth(res);return res.sendFile(path.join(__dirname,'public','login.html'));}
 });
 app.get('/admin',auth,admin,(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
-app.get('/student',auth,(req,res)=>{if(req.user.role!=='student')return res.redirect('/admin');res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public','index.html'));});
+app.get('/student',auth,(req,res)=>{if(req.user.role!=='student' && !(req.user.role==='admin' && String(req.query.admin_view||'')==='1'))return res.redirect('/admin');res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public','index.html'));});
 app.get('/index.html',auth,(req,res)=>{if(req.user.role==='admin')return res.redirect('/admin');res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public','index.html'))});
 app.use(express.static(path.join(__dirname,'public'),{index:false,setHeaders:(res,file)=>{if(/\.(html|js)$/.test(file))res.setHeader('Cache-Control','no-store')}}));
 
@@ -71,7 +71,41 @@ app.patch('/api/planner/:id',auth,async(req,res)=>{const {completed,title,subjec
 app.delete('/api/planner/:id',auth,async(req,res)=>{const r=await pool.query('DELETE FROM planner_tasks WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id]);res.json({deleted:r.rowCount===1})});
 
 // Test library + engine
-app.get('/api/tests',auth,async(req,res)=>{const p=[];let s='SELECT * FROM tests WHERE published=TRUE';if(req.query.institution){p.push(req.query.institution);s+=' AND lower(institution)=lower($1)'}s+=' ORDER BY COALESCE(year,0) DESC,COALESCE(sequence_no,999999) ASC,title';res.json({tests:(await pool.query(s,p)).rows})});
+
+app.get('/api/dashboard',auth,async(req,res)=>{try{
+ const u=req.user;
+ const a=(await pool.query(`SELECT COUNT(*)::int tests_attempted,COALESCE(ROUND(AVG(score),1),0) average_score,COALESCE(SUM(total_questions),0)::int questions_attempted,COUNT(*) FILTER (WHERE submitted_at>=NOW()-INTERVAL '7 days')::int tests_this_week FROM test_attempts WHERE user_id=$1`,[u.id])).rows[0]||{};
+ const streak=(await pool.query(`SELECT COALESCE(streak_days,0)::int streak_days FROM users WHERE id=$1`,[u.id])).rows[0]?.streak_days||0;
+ const tests=(await pool.query(`SELECT t.id,t.title,t.institution,t.category,t.year,t.duration_seconds,COUNT(tq.question_id)::int question_count,COALESCE((SELECT ROUND(AVG(a.score),1) FROM test_attempts a WHERE a.user_id=$1 AND a.test_id=t.id),0) avg_score,COALESCE((SELECT COUNT(*) FROM test_attempts a WHERE a.user_id=$1 AND a.test_id=t.id),0)::int attempts FROM tests t LEFT JOIN test_questions tq ON tq.test_id=t.id WHERE t.published=TRUE GROUP BY t.id ORDER BY t.updated_at DESC NULLS LAST,t.title LIMIT 6`,[u.id])).rows;
+ const resume=(await pool.query(`SELECT qs.*,t.title,t.duration_seconds FROM quiz_sessions qs JOIN tests t ON t.id=qs.test_id WHERE qs.user_id=$1 AND COALESCE(qs.status,'active')='active' ORDER BY qs.updated_at DESC LIMIT 1`,[u.id])).rows[0]||null;
+ if(resume) resume.progress=Math.round(((Number(resume.state?.index||0)+1)/Math.max(1,(await pool.query('SELECT COUNT(*)::int c FROM test_questions WHERE test_id=$1',[resume.test_id])).rows[0].c))*100);
+ res.json({user:{id:u.id,name:u.name},summary:{...a,streak_days:streak},tests,resume});
+}catch(e){console.error('dashboard',e);res.status(500).json({error:'Could not load dashboard'})}});
+
+app.get('/api/tests/:id/progress',auth,async(req,res)=>{try{
+ const t=(await pool.query(`SELECT t.*,COUNT(tq.question_id)::int live_question_count FROM tests t LEFT JOIN test_questions tq ON tq.test_id=t.id WHERE t.id=$1 GROUP BY t.id`,[req.params.id])).rows[0];
+ if(!t)return res.status(404).json({error:'Test not found'});
+ const a=(await pool.query(`SELECT COUNT(*)::int attempts,COALESCE(MAX(score),0)::numeric best_score,COALESCE(SUM(total_questions),0)::int attempted_questions FROM test_attempts WHERE user_id=$1 AND test_id=$2`,[req.user.id,t.id])).rows[0];
+ const progress=t.live_question_count?Math.min(100,Math.round((Number(a.attempted_questions||0)/Math.max(1,Number(t.live_question_count)))*100)):0;
+ res.json({test:{...t,question_count:Number(t.live_question_count||0)},progress:{...a,best_score:Number(a.best_score||0),progress}});
+}catch(e){res.status(500).json({error:'Could not load test details'})}});
+
+app.get('/api/admin/analytics',auth,admin,async(_req,res)=>{try{
+ const stats=(await pool.query(`SELECT
+ (SELECT COUNT(*) FROM users WHERE role='student') students,
+ (SELECT COUNT(*) FROM users WHERE role='student' AND status='active') active_students,
+ (SELECT COUNT(*) FROM tests WHERE published=TRUE) published_tests,
+ (SELECT COUNT(*) FROM questions) questions,
+ (SELECT COUNT(*) FROM test_attempts) attempts,
+ (SELECT COALESCE(ROUND(AVG(score),1),0) FROM test_attempts) avg_score,
+ (SELECT COUNT(*) FROM support_threads WHERE status='open') open_support,
+ (SELECT COUNT(*) FROM question_attempts WHERE is_correct=FALSE) wrong_answers`)).rows[0];
+ const popular=(await pool.query(`SELECT t.id,t.title,COUNT(a.id)::int attempts,COALESCE(ROUND(AVG(a.score),1),0) avg_score FROM tests t LEFT JOIN test_attempts a ON a.test_id=t.id GROUP BY t.id ORDER BY attempts DESC,t.title LIMIT 8`)).rows;
+ const hard=(await pool.query(`SELECT q.id,q.question_en,q.subject,COUNT(qa.id)::int attempts,SUM(CASE WHEN qa.is_correct=FALSE THEN 1 ELSE 0 END)::int wrong FROM questions q JOIN question_attempts qa ON qa.question_id=q.id GROUP BY q.id,q.question_en,q.subject HAVING COUNT(qa.id)>=3 ORDER BY (SUM(CASE WHEN qa.is_correct=FALSE THEN 1 ELSE 0 END)::numeric/COUNT(qa.id)) DESC LIMIT 8`)).rows;
+ res.json({stats,popular,hard});
+}catch(e){res.status(500).json({error:'Could not load admin analytics'})}});
+
+app.get('/api/tests',auth,async(req,res)=>{const p=[];let s=`SELECT t.*,COUNT(tq.question_id)::int AS live_question_count FROM tests t LEFT JOIN test_questions tq ON tq.test_id=t.id WHERE t.published=TRUE`;if(req.query.institution){p.push(req.query.institution);s+=' AND lower(t.institution)=lower($1)'}s+=' GROUP BY t.id ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title';const rows=(await pool.query(s,p)).rows.map(t=>({...t,question_count:Number(t.live_question_count||t.question_count||0)}));res.json({tests:rows})});
 app.get('/api/tests/:id/questions',auth,async(req,res)=>{
   const q=await pool.query(`SELECT q.*,t.title test_title,t.duration_seconds FROM test_questions tq JOIN questions q ON q.id=tq.question_id JOIN tests t ON t.id=tq.test_id WHERE tq.test_id=$1 AND t.published=TRUE ORDER BY tq.sort_order`,[req.params.id]);
   const questions=q.rows;
@@ -461,6 +495,7 @@ app.patch('/api/admin/support/:id',auth,admin,async(req,res)=>{
   await audit(req.user,'support_status_change',q.rows[0].user_id,{thread_id:req.params.id,status});
   res.json({thread:q.rows[0]});
 });
+app.patch('/api/admin/tests/:id',auth,admin,async(req,res)=>{try{const b=req.body||{};if(typeof b.published!=='boolean')return res.status(400).json({error:'published must be boolean'});const q=await pool.query('UPDATE tests SET published=$1,updated_at=NOW() WHERE id=$2 RETURNING *',[b.published,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Test/section not found.'});await audit(req.user,b.published?'publish_test':'unpublish_test',req.params.id,{title:q.rows[0].title});res.json({test:q.rows[0]})}catch(e){res.status(400).json({error:e.message||'Could not update test.'})}});
 app.delete('/api/admin/tests/:id',auth,admin,async(req,res)=>{
   const testId=String(req.params.id); const deleteQuestions=req.query.delete_questions==='true'; const client=await pool.connect();
   try{
