@@ -80,7 +80,7 @@
         document.body.insertAdjacentHTML('afterbegin','<div id=\"dhySessionNotice\" style=\"position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#080a0d;color:#fff;padding:20px;text-align:center\"><div style=\"max-width:420px\"><h2>Session required</h2><p style=\"color:#9aa3af\">Your DHYEYA session is no longer available. Please sign in again.</p><button class=\"btn primary\" onclick=\"location.href=\'/\'\">Return to Login</button></div></div>');
         return;
       }
-      if(currentUser.role==='admin' && new URLSearchParams(location.search).get('admin_view')!=='1'){location.replace('/admin');return;}
+      if(currentUser.role==='admin'){location.replace('/admin');return;}
       unlock();
       patchProfilePage();
       const refreshGreeting=()=>hydrate();
