@@ -1128,6 +1128,9 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 @media(max-width:380px){#quiz .pq-actions #quizModePill{display:none}#quiz .pq-title h1{max-width:155px}}
 /* V4.2.3 — quiz quality / Unicode / iPad controls */
 #quiz .question-hi{margin-top:8px;font-size:clamp(15px,1.6vw,19px);line-height:1.65;color:var(--dh-text);font-weight:600}
+#quiz .option-hi{margin-top:4px;line-height:1.55;font-weight:500;color:var(--dh-text)}
+#quiz .statement-instruction{margin-top:12px;padding:12px 14px;border-left:3px solid var(--dh-accent,var(--gold));border-radius:10px;background:var(--dh-soft,var(--card2));font-weight:600}
+#quiz .structured-instruction-hi{margin-top:8px;padding:10px 12px;border-left:3px solid var(--dh-accent,var(--gold));background:var(--dh-soft,var(--card2))}
 #quiz .statement-hi{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:.95em;line-height:1.65;color:var(--dh-muted)}
 #quiz .practice-feedback .ex-en{margin-top:10px}
 #quiz .practice-feedback .ex-hi{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);line-height:1.75;font-weight:500}
@@ -1587,22 +1590,11 @@ function quizQuestionType(q){
   if(/(?:consider|following|which of).*statements?[\s\S]{0,700}\s1[.)]\s+/i.test(text)) return 'statement';
   return 'mcq';
 }
-function repairMojibake(v){
-  const s=String(v??'');
-  if(!/[ÃÂà-ÿ][\u0000-\u00ff]/.test(s) && !/(?:Ã|Â|à¤|à¦|â€|ðŸ)/.test(s)) return s;
-  try{
-    const bytes=[]; for(const ch of s){const c=ch.charCodeAt(0); if(c>255)return s; bytes.push(c);}
-    const fixed=new TextDecoder('utf-8',{fatal:false}).decode(new Uint8Array(bytes));
-    return fixed.includes('�') && !s.includes('�') ? s : fixed;
-  }catch{return s;}
-}
 function hasReplacement(v){return String(v??'').includes('�');}
-function devanagariSlice(v){
-  const s=repairMojibake(v); const m=s.match(/[\u0900-\u097F]/);
-  if(!m)return {en:s.trim(),hi:''};
-  return {en:s.slice(0,m.index).trim(),hi:s.slice(m.index).trim()};
-}
-function cleanQuizLine(v){return repairMojibake(String(v||'')).replace(/\s+/g,' ').trim();}
+function hasInvalidUnicode(v){const s=String(v??'');for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);if(c>=0xD800&&c<=0xDBFF){const n=s.charCodeAt(i+1);if(!(n>=0xDC00&&n<=0xDFFF))return true;i++;}else if(c>=0xDC00&&c<=0xDFFF)return true;}return false;}
+function safeUnicode(v){const s=String(v??'').normalize('NFC');return hasReplacement(s)||hasInvalidUnicode(s)?'':s;}
+function devanagariSlice(v){const s=safeUnicode(v);const m=s.match(/[\u0900-\u097F]/);if(!m)return {en:s.trim(),hi:''};return {en:s.slice(0,m.index).trim(),hi:s.slice(m.index).trim()};}
+function cleanQuizLine(v){return safeUnicode(String(v||'')).replace(/\s+/g,' ').trim();}
 function stripQuizInstructions(v){return String(v||'').replace(/\n?\s*(?:codes?|select\s+the\s+correct|choose\s+the\s+correct|which\s+of\s+the\s+following|out\s+of\s+these|options?\s+given)[\s\S]*$/i,'').trim();}
 function extractMatchLists(raw){
   const text=String(raw||'').replace(/\r/g,'');
@@ -1666,12 +1658,32 @@ function extractAssertionReason(raw){
   const end=rest.search(/\s+(?:which\s+of\s+the\s+options|select\s+the\s+correct|choose\s+the\s+correct|in\s+the\s+light|options?\s+given|choose\s+the\s+most\s+appropriate)/i);
   const reason=cleanQuizLine(end>=0?rest.slice(0,end):rest);return assertion&&reason?{assertion,reason}:null;
 }
+function parseStatementSet(text){
+  const raw=safeUnicode(String(text||'')).replace(/\r/g,'').trim();
+  if(!raw)return null;
+  const marker=/(?:^|[\s])(?:(\d{1,2})[.)]|\(?([IVX]{1,8})\)?[.)]|(?:Statement\s+)([IVX]+)[:.]|Statement\s+(\d{1,2})[:.])\s+/gi;
+  const all=[];let m;while((m=marker.exec(raw))){const label=m[1]||m[2]||m[3]||m[4];all.push({start:m.index+(m[0].match(/^\s+/)?.[0].length||0),pos:marker.lastIndex,label});}
+  if(!all.length)return null;
+  let usable=all;
+  if(usable.every(x=>/^\d+$/.test(x.label))){const first=usable.findIndex(x=>x.label==='1');if(first<0)return null;usable=usable.slice(first);let expected=1;usable=usable.filter(x=>Number(x.label)===expected++);if(usable.length<2)return null;}
+  else if(usable.every(x=>/^[IVX]+$/i.test(x.label))){const roman=['I','II','III','IV','V','VI','VII','VIII'];const first=roman.indexOf(String(usable[0].label).toUpperCase());if(first<0)return null;usable=usable.filter((x,i)=>String(x.label).toUpperCase()===roman[first+i]);if(usable.length<2)return null;}
+  const firstStart=usable[0].start;const tail=raw.slice(firstStart);
+  const stop=tail.search(/(?:^|\s)(?:which\s+of\s+(?:the\s+)?(?:above|following|statements?)|which\s+of\s+the\s+statements?|which\s+statements?|select\s+the\s+correct|choose\s+the\s+correct|in\s+the\s+light\s+of|options?\s+given|codes?\s*:|out\s+of\s+these)\b/i);
+  const regionEnd=stop>=0?firstStart+stop:raw.length;
+  const inRange=usable.filter(x=>x.start<regionEnd);
+  if(inRange.length<2)return null;
+  const items=inRange.map((x,i)=>({label:x.label,text:cleanQuizLine(raw.slice(x.pos,i+1<inRange.length?inRange[i+1].start:regionEnd))})).filter(x=>x.text);
+  const stem=cleanQuizLine(raw.slice(0,firstStart));
+  const instruction=stop>=0?cleanQuizLine(raw.slice(regionEnd)):'';
+  return {stem,items,instruction};
+}
+
 function renderStructuredStem(q){
-  const raw=cleanQuizLine(q?.question||q?.question_en||'');
-  const rawBi=devanagariSlice(raw);
-  const rawEn=cleanQuizLine(rawBi.en);
+  const raw=safeUnicode(q?.question||q?.question_en||'');
+  const sourceBi=devanagariSlice(raw);
+  const rawEn=cleanQuizLine(sourceBi.en||raw);
   const rawHi=cleanQuizLine(q?.questionHi||'');
-  const type=quizQuestionType(q);let stem=rawEn||raw,structure='';
+  const type=quizQuestionType(q);let stem=rawEn||raw,structure='',bilingual='';
   const esc=escapeHtml;
   if(type==='match'){
     const parsed=extractMatchLists(rawEn);
@@ -1682,28 +1694,24 @@ function renderStructuredStem(q){
       structure=`<div class="structured-match">${card('List 1',parsed.left,'list-one')}${card('List 2',parsed.right,'list-two')}</div>`;
     }
   }else if(type==='statement'){
-    const items=extractStatementItems(rawEn);
-    if(!items.length){
-      stem=cleanQuizLine(rawEn||raw);
-      structure=`<div class="structured-statements"><div class="structured-block-title">Statement</div><div class="statement-box single"><span class="statement-number">•</span><span>${esc(rawEn||raw)}</span></div></div>`;
+    const enSet=parseStatementSet(rawEn); const hiSet=parseStatementSet(rawHi);
+    if(enSet&&enSet.items.length){
+      stem=enSet.stem||'Consider the following statements:';
+      const hiInstruction=hiSet?.instruction||(!hiSet?.items&&rawHi?rawHi:'');
+      structure=`<div class="structured-statements"><div class="structured-block-title">Statements</div>${enSet.items.map((x,i)=>{const hi=hiSet?.items?.[i]?.text||'';return `<div class="statement-box"><span class="statement-number">${esc(x.label)}</span><span><div>${esc(x.text)}</div>${hi?`<div class="statement-hi">${esc(hi)}</div>`:''}</span></div>`}).join('')}${enSet.instruction?`<div class="statement-instruction">${esc(enSet.instruction)}</div>`:''}${hiInstruction?`<div class="question-hi structured-instruction-hi">${esc(hiInstruction)}</div>`:''}</div>`;
     }else{
-      const first=rawEn.search(/(?:^|\s)(?:\d+[.)]|\(?[A-Z]\)?(?:[.:]|\s)|Statement\s+[IVX]+[:.])\s*/);stem=cleanQuizLine(first>0?rawEn.slice(0,first):rawEn);
-      structure=`<div class="structured-statements"><div class="structured-block-title">Statements</div>${items.map(x=>{const bi=devanagariSlice(x.text);return `<div class="statement-box"><span class="statement-number">${esc(x.label)}</span><span><div>${esc(bi.en)}</div>${bi.hi?`<div class="statement-hi">${esc(bi.hi)}</div>`:''}</span></div>`}).join('')}</div>`;
+      stem=rawEn||raw;
+      bilingual=rawHi?`<div class="question-hi">${esc(rawHi)}</div>`:'';
     }
   }else if(type==='assertion'){
     const ar=extractAssertionReason(rawEn);
     if(ar){
-      const am=rawEn.search(/assertion\s*\(?a\)?\s*[:\-–—]?\s*/i);stem=cleanQuizLine(am>0?rawEn.slice(0,am):'Consider the following statements:');
+      const am=rawEn.search(/assertion\s*\(?a\)?\s*[:\-–—]?\s*/i);stem=cleanQuizLine(am>0?rawEn.slice(0,am):'Consider the following:');
       structure=`<div class="structured-assertion"><div class="assertion-box"><div class="assertion-title">Assertion (A)</div><div>${esc(ar.assertion)}</div></div><div class="reason-box"><div class="assertion-title">Reason (R)</div><div>${esc(ar.reason)}</div></div></div>`;
     }
   }
-  const sourceBi=rawBi;
-  const hiCandidate=repairMojibake(q?.questionHi||'');
-  /* Never render replacement-character Hindi. If the bilingual question was
-     imported as one combined field, use only the clean Devanagari segment. */
-  const bilingualText=(!hiCandidate||hasReplacement(hiCandidate))?sourceBi.hi:hiCandidate;
-  const bilingual=bilingualText&&!hasReplacement(bilingualText)?`<div class="question-hi">${esc(bilingualText)}</div>`:'';
-  if(type==='mcq' && sourceBi.hi) stem=sourceBi.en;
+  if(!bilingual&&type!=='statement'&&rawHi)bilingual=`<div class="question-hi">${esc(rawHi)}</div>`;
+  if(type==='mcq'&&sourceBi.hi&&!rawHi)bilingual=`<div class="question-hi">${esc(sourceBi.hi)}</div>`;
   return {type,stem,structure,bilingual};
 }
 function renderQuestion(){
@@ -1728,7 +1736,8 @@ function renderQuestion(){
   (Array.isArray(q.options)?q.options:[]).forEach((opt,i)=>{
     const b=document.createElement('button');b.type='button';b.className='option answer-option';
     if(quiz.answers[q.id]===i)b.classList.add('selected');
-    b.innerHTML=`<b>${String.fromCharCode(65+i)}</b><span>${escapeHtml(opt)}</span>`;
+    const bi=devanagariSlice(typeof opt==='string'?opt:(opt?.text??opt?.label??''));
+    b.innerHTML=`<b>${String.fromCharCode(65+i)}</b><span><div>${escapeHtml(bi.en||String(opt??''))}</div>${bi.hi?`<div class="option-hi">${escapeHtml(bi.hi)}</div>`:''}</span>`;
     b.onclick=()=>selectAnswer(i);box.appendChild(b);
   });
   const e=document.createElement('button');e.type='button';e.className='option answer-option not-attempted-option';
@@ -1745,7 +1754,7 @@ function selectAnswer(i){
   document.querySelectorAll('.answer-option').forEach((b,n)=>{if(n<q.options.length)b.classList.toggle('selected',n===i);else b.classList.toggle('selected',i===null)});
   if(quiz.mode==='practice' && i!==null){
     const fb=document.getElementById('feedback');
-    const ex=devanagariSlice(q.explanation||''); const exHi=repairMojibake(q.explanationHi||''); const hi=(exHi&&!hasReplacement(exHi))?exHi:(!hasReplacement(ex.hi)?ex.hi:''); const explanationHtml=`<div class="ex-en">${escapeHtml(ex.en||'')}</div>${hi?`<div class="ex-hi">${escapeHtml(hi)}</div>`:''}`;
+    const ex=devanagariSlice(q.explanation||''); const exHi=safeUnicode(q.explanationHi||''); const hi=exHi||ex.hi||''; const explanationHtml=`<div class="ex-en">${escapeHtml(ex.en||'')}</div>${hi?`<div class="ex-hi">${escapeHtml(hi)}</div>`:''}`;
     if(q.answer===null || q.answer===undefined){fb.className='practice-feedback neutral';fb.innerHTML='<b>No valid answer.</b> '+explanationHtml;}
     else {const ok=Number(i)===Number(q.answer);fb.className='practice-feedback '+(ok?'ok':'bad');fb.innerHTML=(ok?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+explanationHtml;if(!ok)addRevision(q.id);}
   }
