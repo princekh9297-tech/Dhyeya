@@ -46,3 +46,15 @@ The Question Bank importer accepts A-E, zero-based numeric option indexes, `*`, 
 - Admin PDF/JSON/CSV imports continue to write directly to PostgreSQL.
 - Existing database content is not deleted, reset, or migrated by this cleanup.
 - A fresh deployment starts with the database schema/admin setup; questions are added through Admin → Question Bank.
+
+## V4.2.6 — Global UTF-8 / Hindi Encoding Fix
+- PostgreSQL is required to report `UTF8`; connection startup requests `client_encoding=UTF8`.
+- Question text columns are verified as TEXT/VARCHAR and `options` as JSONB.
+- JSON/CSV/PDF imports are decoded as UTF-8 and normalized to NFC without guessing/re-writing Hindi.
+- Replacement characters (`�`), NULs, unpaired surrogates and common mojibake patterns are rejected before import.
+- Import validation reports all row errors together instead of stopping at the first row.
+- API JSON responses explicitly use `application/json; charset=utf-8`.
+- Admin Question Bank includes a Unicode Diagnostic action.
+- The quiz no longer performs mojibake "repair" or silently deletes Hindi fields; authoritative source re-import is used to restore corrupted stored content.
+- Inline statement questions are separated into stem, numbered statement cards, and instruction; bilingual statement text is paired when supplied separately.
+- Options render English and Devanagari on separate lines when a bilingual option is supplied.

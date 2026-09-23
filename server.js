@@ -13,10 +13,10 @@ import { fileURLToPath } from 'node:url';
 const {Pool}=pg;
 const app=express();
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
-const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false});
+const pool=new Pool({connectionString:process.env.DATABASE_URL,options:'-c client_encoding=UTF8',ssl:process.env.NODE_ENV==='production'?{rejectUnauthorized:false}:false});
 const JWT_SECRET=process.env.JWT_SECRET;if(!JWT_SECRET)throw new Error('JWT_SECRET is required');
 app.set('trust proxy', 1);
-app.use(express.json({limit:'50mb'}));app.use(cookieParser());
+app.use(express.json({limit:'50mb'}));app.use(cookieParser());app.use('/api',(req,res,next)=>{const json=res.json.bind(res);res.json=(body)=>{res.setHeader('Content-Type','application/json; charset=utf-8');return json(body)};next()});
 
 function sign(u){return jwt.sign({sub:u.id},JWT_SECRET,{expiresIn:'30d'})}
 const COOKIE_OPTS={httpOnly:true,sameSite:'lax',secure:process.env.NODE_ENV==='production',maxAge:30*24*60*60*1000,path:'/'};
@@ -74,14 +74,7 @@ app.delete('/api/planner/:id',auth,async(req,res)=>{const r=await pool.query('DE
 app.get('/api/tests',auth,async(req,res)=>{const p=[];let s='SELECT * FROM tests WHERE published=TRUE';if(req.query.institution){p.push(req.query.institution);s+=' AND lower(institution)=lower($1)'}s+=' ORDER BY COALESCE(year,0) DESC,COALESCE(sequence_no,999999) ASC,title';res.json({tests:(await pool.query(s,p)).rows})});
 app.get('/api/tests/:id/questions',auth,async(req,res)=>{
   const q=await pool.query(`SELECT q.*,t.title test_title,t.duration_seconds FROM test_questions tq JOIN questions q ON q.id=tq.question_id JOIN tests t ON t.id=tq.test_id WHERE tq.test_id=$1 AND t.published=TRUE ORDER BY tq.sort_order`,[req.params.id]);
-  const questions=q.rows.map(row=>{
-    const x={...row};
-    /* Never send a known replacement-character field to the quiz renderer. The
-       clean English/bilingual question remains available for display. */
-    if(typeof x.question_hi==='string' && x.question_hi.includes('�')) x.question_hi=null;
-    if(typeof x.explanation_hi==='string' && x.explanation_hi.includes('�')) x.explanation_hi=null;
-    return x;
-  });
+  const questions=q.rows;
   res.json({test:q.rows[0]?{id:req.params.id,title:q.rows[0].test_title,duration_seconds:q.rows[0].duration_seconds}:null,questions});
 });
 app.get('/api/pyq/archive',auth,async(_req,res)=>{const q=await pool.query(`SELECT t.id,t.title,t.institution,t.category,t.year,t.sequence_no,t.duration_seconds,t.question_count,t.published,COALESCE((SELECT json_agg(json_build_object('subject',s.subject,'count',s.count) ORDER BY s.subject) FROM (SELECT COALESCE(q.subject,'Uncategorized') subject,COUNT(*)::int count FROM test_questions tq JOIN questions q ON q.id=tq.question_id WHERE tq.test_id=t.id GROUP BY COALESCE(q.subject,'Uncategorized')) s),'[]'::json) AS subjects FROM tests t WHERE t.published=TRUE AND (lower(coalesce(t.category,''))='bpsc pyq archive' OR (lower(coalesce(t.institution,''))='bpsc' AND lower(coalesce(t.title,'')) LIKE '%pyq%')) ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title`);res.json({tests:q.rows})});
@@ -116,39 +109,92 @@ app.patch('/api/quiz-sessions/current',auth,async(req,res)=>{
 app.delete('/api/quiz-sessions/current',auth,async(req,res)=>{await pool.query("UPDATE quiz_sessions SET status='abandoned',updated_at=NOW() WHERE user_id=$1 AND status='in_progress'",[req.user.id]);res.json({ok:true})});
 
 // Admin Question Bank import — ongoing content management without GitHub updates.
-function repairImportedUnicode(value){
-  const s=String(value??'');
-  if(!/(?:Ã|Â|à¤|à¦|â€|ðŸ)/.test(s)) return s;
-  try{ const bytes=[...s].map(ch=>ch.charCodeAt(0)); if(bytes.some(c=>c>255)) return s; const fixed=Buffer.from(bytes).toString('utf8'); return fixed.includes('�')&&!s.includes('�')?s:fixed; }catch{return s;}
+// IMPORTANT: source content is authoritative. We normalize only to Unicode NFC;
+// we never attempt to "repair" or rewrite Hindi by guessing a character encoding.
+function isUnpairedSurrogate(s){
+  for(let i=0;i<s.length;i++){
+    const c=s.charCodeAt(i);
+    if(c>=0xD800&&c<=0xDBFF){const n=s.charCodeAt(i+1);if(!(n>=0xDC00&&n<=0xDFFF))return true;i++;}
+    else if(c>=0xDC00&&c<=0xDFFF)return true;
+  }
+  return false;
 }
-function cleanImportedField(value){return repairImportedUnicode(value).normalize('NFC').trim();}
-function splitImportedBilingual(value){const s=cleanImportedField(value); const i=s.search(/[\u0900-\u097F]/); return i>=0?{en:s.slice(0,i).trim(),hi:s.slice(i).trim()}:{en:s,hi:''};}
-function normalizeImportedQuestion(q, index){
+function looksLikeMojibake(s){return /(?:Ã.|Â.|à¤|à¦|â€|ðŸ|Ð.|Ñ.)/.test(s)}
+function normalizeSourceText(value,label,{allowNull=true}={}){
+  if(value===undefined||value===null)return allowNull?null:'';
+  const s=String(value).normalize('NFC');
+  if(s.includes('\u0000'))throw new Error(`${label}: NUL character detected`);
+  if(s.includes('\uFFFD'))throw new Error(`${label}: Unicode replacement character detected (�). Re-import the original UTF-8 source; content was not changed.`);
+  if(isUnpairedSurrogate(s))throw new Error(`${label}: invalid Unicode surrogate detected`);
+  if(looksLikeMojibake(s))throw new Error(`${label}: possible mojibake/incorrect character decoding detected. Re-import the original UTF-8 source.`);
+  return s;
+}
+function splitImportedBilingual(value,label='text'){
+  const s=normalizeSourceText(value,label,{allowNull:false});
+  const i=s.search(/[\u0900-\u097F]/);
+  return i>=0?{en:s.slice(0,i),hi:s.slice(i)}:{en:s,hi:''};
+}
+function normalizeImportedQuestion(q,index){
   const raw={...(q||{})};
-  const combined=splitImportedBilingual(raw.question_en??raw.question??raw.questionText??''); const question_en=combined.en;
-  if(!question_en) throw new Error(`Row ${index}: question_en/question is required`);
+  const rawQuestion=raw.question_en??raw.question??raw.questionText??'';
+  let question_en,question_hi;
+  if(raw.question_hi!==undefined&&raw.question_hi!==null&&String(raw.question_hi)!==''){
+    question_en=normalizeSourceText(rawQuestion,`Row ${index} question_en`,{allowNull:false});
+    question_hi=normalizeSourceText(raw.question_hi,`Row ${index} question_hi`);
+  }else{
+    const combined=splitImportedBilingual(rawQuestion,`Row ${index} question`);
+    question_en=combined.en; question_hi=combined.hi||null;
+  }
+  if(!question_en.trim())throw new Error(`Row ${index}: question_en/question is required`);
+
   let options=raw.options;
   if(typeof options==='string'){
-    try{options=JSON.parse(options)}catch{options=options.split(/\s*\|\s*/).map(x=>x.trim()).filter(Boolean)}
+    try{options=JSON.parse(options)}catch{options=options.split(/\s*\|\s*/)}
   }
-  if(!Array.isArray(options)) options=[raw.option_a,raw.option_b,raw.option_c,raw.option_d,raw.option_e].filter(x=>x!==undefined&&x!==null&&String(x).trim()!=='');
-  options=options.map(x=>typeof x==='object'&&x!==null?(x.text??x.label??JSON.stringify(x)):String(x).trim()).filter(Boolean);
-  if(options.length<2) throw new Error(`Row ${index}: at least 2 options are required`);
+  if(!Array.isArray(options))options=[raw.option_a,raw.option_b,raw.option_c,raw.option_d,raw.option_e].filter(x=>x!==undefined&&x!==null&&String(x).trim()!=='');
+  options=options.map((x,i)=>normalizeSourceText(typeof x==='object'&&x!==null?(x.text??x.label??''):x,`Row ${index} option ${String.fromCharCode(65+i)}`,{allowNull:false})).filter(x=>x.trim()!=='');
+  if(options.length<2)throw new Error(`Row ${index}: at least 2 options are required`);
+
   let answer=raw.answer??raw.correct_answer??raw.correctOption;
-  if(answer===undefined||answer===null||(typeof answer==='string'&&!answer.trim())) answer=null;
+  if(answer===undefined||answer===null||(typeof answer==='string'&&!answer.trim()))answer=null;
   else if(typeof answer==='string'){
     const a=answer.trim().toUpperCase();
-    if(a==='*') answer=null;
-    else if(/^[ABCDE]$/.test(a)) answer={A:0,B:1,C:2,D:3,E:4}[a];
-    else if(/^\d+$/.test(a)) answer=Number(a);
+    if(a==='*')answer=null;
+    else if(/^[ABCDE]$/.test(a))answer={A:0,B:1,C:2,D:3,E:4}[a];
+    else if(/^\d+$/.test(a))answer=Number(a);
     else throw new Error(`Row ${index}: answer must be A-E, *, null, or a valid option index`);
-  }else if(typeof answer==='number') answer=Number(answer);
+  }else if(typeof answer==='number')answer=Number(answer);
   else throw new Error(`Row ${index}: answer must be A-E, *, null, or a valid option index`);
-  if(answer!==null&&(!Number.isInteger(answer)||answer<0||answer>=options.length)) throw new Error(`Row ${index}: answer must be A-E, *, null, or a valid option index`);
-  const fingerprint=crypto.createHash('sha256').update([question_en,JSON.stringify(options)].join('\n').trim().toLowerCase()).digest('hex').slice(0,24); const id=String(raw.id||`IMP-${fingerprint}`).trim();
+  if(answer!==null&&(!Number.isInteger(answer)||answer<0||answer>=options.length))throw new Error(`Row ${index}: answer must be A-E, *, null, or a valid option index`);
+
+  const fingerprint=crypto.createHash('sha256').update([question_en,question_hi||'',JSON.stringify(options)].join('\n').trim().toLowerCase()).digest('hex').slice(0,24);
+  const id=String(raw.id||`IMP-${fingerprint}`).trim();
+  if(!id)throw new Error(`Row ${index}: id is required or must be generated`);
   const metadata={...(raw.metadata&&typeof raw.metadata==='object'?raw.metadata:{})};
-  for(const key of ['category','source_exam','source_page','page','source_image','source_image_url']) if(raw[key]!==undefined) metadata[key]=raw[key];
-  const suppliedHi=cleanImportedField(raw.question_hi||''); const cleanCombinedHi=combined.hi&&!combined.hi.includes('�')?combined.hi:null; const question_hi=(suppliedHi&&!suppliedHi.includes('�'))?suppliedHi:cleanCombinedHi; const expCombined=splitImportedBilingual(raw.explanation_en??raw.explanation??''); const suppliedExpHi=cleanImportedField(raw.explanation_hi||''); const cleanExpCombinedHi=expCombined.hi&&!expCombined.hi.includes('�')?expCombined.hi:null; const explanation_en=expCombined.en||null; const explanation_hi=(suppliedExpHi&&!suppliedExpHi.includes('�'))?suppliedExpHi:cleanExpCombinedHi; return {id,subject:raw.subject||null,topic:raw.topic||null,subtopic:raw.subtopic||null,year:raw.year?Number(raw.year):null,language:raw.language||'bilingual',question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty:raw.difficulty||null,source:raw.source||'Admin Question Bank Import',metadata};
+  for(const key of ['category','source_exam','source_page','page','source_image','source_image_url'])if(raw[key]!==undefined)metadata[key]=raw[key];
+
+  let explanation_en=null,explanation_hi=null;
+  const rawExplanation=raw.explanation_en??raw.explanation??'';
+  if(raw.explanation_hi!==undefined&&raw.explanation_hi!==null&&String(raw.explanation_hi)!==''){
+    explanation_en=normalizeSourceText(rawExplanation,`Row ${index} explanation_en`);
+    explanation_hi=normalizeSourceText(raw.explanation_hi,`Row ${index} explanation_hi`);
+  }else if(rawExplanation){
+    const ex=splitImportedBilingual(rawExplanation,`Row ${index} explanation`);
+    explanation_en=ex.en||null; explanation_hi=ex.hi||null;
+  }
+
+  return {id,subject:raw.subject==null?null:normalizeSourceText(raw.subject,`Row ${index} subject`),topic:raw.topic==null?null:normalizeSourceText(raw.topic,`Row ${index} topic`),subtopic:raw.subtopic==null?null:normalizeSourceText(raw.subtopic,`Row ${index} subtopic`),year:raw.year?Number(raw.year):null,language:raw.language||'bilingual',question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty:raw.difficulty==null?null:normalizeSourceText(raw.difficulty,`Row ${index} difficulty`),source:raw.source==null?'Admin Question Bank Import':normalizeSourceText(raw.source,`Row ${index} source`),metadata};
+}
+function normalizeImportBatch(input){
+  const normalized=[],errors=[];const seen=new Set();
+  for(let i=0;i<input.length;i++){
+    try{
+      const q=normalizeImportedQuestion(input[i],i+1);
+      if(seen.has(q.id))throw new Error(`Duplicate question ID in upload: ${q.id}`);
+      seen.add(q.id);normalized.push(q);
+    }catch(e){errors.push({row:i+1,error:e.message||'Invalid question'});}
+  }
+  return {normalized,errors};
 }
 async function importQuestionsToDb(questions,testConfig=null,actor=null){
   const client=await pool.connect(); let inserted=0,updated=0,testId=null,mapped=0;
@@ -242,23 +288,33 @@ async function parseUploadedFile(file){
   throw new Error('Unsupported file. Use PDF, JSON or CSV.');
 }
 app.post('/api/admin/questions/parse-file',auth,admin,upload.single('file'),async(req,res)=>{
-  try{if(!req.file)return res.status(400).json({error:'No file uploaded.'});const parsed=await parseUploadedFile(req.file);const questions=Array.isArray(parsed)?parsed:(parsed.questions||[]);if(!questions.length)return res.status(422).json({error:'No questions could be detected from this file.',held:parsed.held||[]});const normalized=[];for(let i=0;i<questions.length;i++)normalized.push(normalizeImportedQuestion(questions[i],i+1));res.json({ok:true,filename:req.file.originalname,total:normalized.length,questions:normalized,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}})}catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
+  try{if(!req.file)return res.status(400).json({error:'No file uploaded.'});const parsed=await parseUploadedFile(req.file);const questions=Array.isArray(parsed)?parsed:(parsed.questions||[]);if(!questions.length)return res.status(422).json({error:'No questions could be detected from this file.',held:parsed.held||[]});const batch=normalizeImportBatch(questions);const validation={total:questions.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length};if(batch.errors.length)return res.status(422).json({ok:false,filename:req.file.originalname,total:questions.length,validation,errors:batch.errors,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}});res.json({ok:true,filename:req.file.originalname,total:batch.normalized.length,validation,questions:batch.normalized,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}})}catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
 });
 app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
   try{
     const input=Array.isArray(req.body)?req.body:(Array.isArray(req.body?.questions)?req.body.questions:null);
     if(!input?.length)return res.status(400).json({error:'No questions supplied.'});
     if(input.length>50000)return res.status(400).json({error:'Maximum 50,000 questions per import.'});
-    const seen=new Set(); const normalized=[];
-    for(let i=0;i<input.length;i++){
-      const q=normalizeImportedQuestion(input[i],i+1);
-      if(seen.has(q.id)) throw new Error(`Duplicate question ID in upload: ${q.id}`);
-      seen.add(q.id); normalized.push(q);
-    }
+    const batch=normalizeImportBatch(input);
+    if(batch.errors.length)return res.status(422).json({ok:false,total:input.length,validation:{total:input.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length},errors:batch.errors});
+    const normalized=batch.normalized;
     const test=req.body?.test&&typeof req.body.test==='object'?req.body.test:null;
     const result=await importQuestionsToDb(normalized,test,req.user);
     res.json({ok:true,total:normalized.length,...result});
   }catch(e){res.status(400).json({error:e.message||'Question import failed.'})}
+});
+app.get('/api/admin/encoding-diagnostics',auth,admin,async(_req,res)=>{
+  try{
+    const enc=await pool.query("SELECT current_database() AS database, pg_encoding_to_char(encoding) AS server_encoding FROM pg_database WHERE datname=current_database()");
+    const client=await pool.query("SHOW client_encoding");
+    const cols=await pool.query("SELECT column_name,data_type,udt_name FROM information_schema.columns WHERE table_schema='public' AND table_name='questions' AND column_name IN ('question_en','question_hi','options','explanation_en','explanation_hi') ORDER BY ordinal_position");
+    const counts=await pool.query(`SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE position(chr(65533) in coalesce(question_en,''))>0 OR position(chr(65533) in coalesce(question_hi,''))>0 OR position(chr(65533) in coalesce(explanation_en,''))>0 OR position(chr(65533) in coalesce(explanation_hi,''))>0 OR position(chr(65533) in coalesce(options::text,''))>0)::int AS replacement_character_rows,
+      COUNT(*) FILTER (WHERE coalesce(question_en,'') ~ '(Ã.|Â.|à¤|à¦|â€|ðŸ)' OR coalesce(question_hi,'') ~ '(Ã.|Â.|à¤|à¦|â€|ðŸ)' OR coalesce(explanation_en,'') ~ '(Ã.|Â.|à¤|à¦|â€|ðŸ)' OR coalesce(explanation_hi,'') ~ '(Ã.|Â.|à¤|à¦|â€|ðŸ)')::int AS mojibake_rows
+      FROM questions`);
+    res.json({ok:true,database:enc.rows[0]||null,client_encoding:client.rows[0]?.client_encoding||null,question_columns:cols.rows,corruption:counts.rows[0]||null});
+  }catch(e){res.status(500).json({ok:false,error:e.message})}
 });
 app.get('/api/admin/questions',auth,admin,async(req,res)=>{
   const p=[]; let where=[];
@@ -325,8 +381,27 @@ app.get('/api/admin/attempts',auth,admin,async(req,res)=>{const q=await pool.que
 app.get('/api/admin/audit',auth,admin,async(req,res)=>{const q=await pool.query(`SELECT a.*,au.name actor_name,tu.name target_name FROM audit_logs a LEFT JOIN users au ON au.id=a.actor_user_id LEFT JOIN users tu ON tu.id=a.target_user_id ORDER BY a.created_at DESC LIMIT 500`);res.json({logs:q.rows})});
 app.get('/api/admin/planner',auth,admin,async(_req,res)=>{const q=await pool.query(`SELECT p.*,u.student_code,u.name FROM planner_tasks p JOIN users u ON u.id=p.user_id ORDER BY p.task_date DESC,p.created_at DESC LIMIT 500`);res.json({tasks:q.rows})});
 app.post('/api/admin/tests',auth,admin,async(req,res)=>{const b=req.body||{};if(!b.slug||!b.title)return res.status(400).json({error:'slug and title are required'});try{const q=await pool.query(`INSERT INTO tests(slug,title,institution,category,year,sequence_no,access_type,duration_seconds,published,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,[b.slug,b.title,b.institution||null,b.category||null,b.year||null,b.sequence_no||null,b.access_type||'premium',Number(b.duration_seconds||7200),b.published!==false,JSON.stringify(b.metadata||{})]);await audit(req.user,'create_test',null,{test_id:q.rows[0].id,title:b.title});res.status(201).json({test:q.rows[0]})}catch(e){res.status(409).json({error:'Could not create test: '+e.message})}});
-app.post('/api/admin/import',auth,admin,async(req,res)=>{const data=req.body||{};if(!Array.isArray(data.questions)&&!Array.isArray(data.tests))return res.status(400).json({error:'Send tests/questions/testQuestions arrays'});const client=await pool.connect();let qc=0,tc=0,tqc=0;try{await client.query('BEGIN');for(const t of data.tests||[]){await client.query(`INSERT INTO tests(id,slug,title,institution,category,year,sequence_no,access_type,duration_seconds,published,question_count,metadata) VALUES(COALESCE($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(slug) DO UPDATE SET title=EXCLUDED.title,institution=EXCLUDED.institution,category=EXCLUDED.category,year=EXCLUDED.year,sequence_no=EXCLUDED.sequence_no,duration_seconds=EXCLUDED.duration_seconds,published=EXCLUDED.published,metadata=EXCLUDED.metadata,updated_at=NOW()`,[t.id||null,t.slug,t.title,t.institution||null,t.category||null,t.year||null,t.sequence_no||null,t.access_type||'premium',Number(t.duration_seconds||7200),t.published!==false,Number(t.question_count||0),JSON.stringify(t.metadata||{})]);tc++}for(const q of data.questions||[]){await client.query(`INSERT INTO questions(id,subject,topic,subtopic,year,language,question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty,source,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(id) DO UPDATE SET subject=EXCLUDED.subject,topic=EXCLUDED.topic,subtopic=EXCLUDED.subtopic,year=EXCLUDED.year,language=EXCLUDED.language,question_en=EXCLUDED.question_en,question_hi=EXCLUDED.question_hi,options=EXCLUDED.options,answer=EXCLUDED.answer,explanation_en=EXCLUDED.explanation_en,explanation_hi=EXCLUDED.explanation_hi,difficulty=EXCLUDED.difficulty,source=EXCLUDED.source,metadata=EXCLUDED.metadata,updated_at=NOW()`,[q.id,q.subject||null,q.topic||null,q.subtopic||null,q.year||null,q.language||'bilingual',q.question_en||q.question||'',q.question_hi||null,JSON.stringify(q.options||[]),q.answer??null,q.explanation_en||null,q.explanation_hi||null,q.difficulty||null,q.source||null,JSON.stringify(q.metadata||{})]);qc++}for(const x of data.testQuestions||[]){await client.query(`INSERT INTO test_questions(test_id,question_id,sort_order) VALUES($1,$2,$3) ON CONFLICT(test_id,question_id) DO UPDATE SET sort_order=EXCLUDED.sort_order`,[x.test_id,x.question_id,Number(x.sort_order||1)]);tqc++}await client.query(`UPDATE tests t SET question_count=(SELECT COUNT(*) FROM test_questions tq WHERE tq.test_id=t.id)`);await client.query('COMMIT');await audit(req.user,'import_content',null,{tests:tc,questions:qc,testQuestions:tqc});res.json({ok:true,tests:tc,questions:qc,testQuestions:tqc})}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message})}finally{client.release()}});
-
+app.post('/api/admin/import',auth,admin,async(req,res)=>{
+  const data=req.body||{};
+  if(!Array.isArray(data.questions)&&!Array.isArray(data.tests))return res.status(400).json({error:'Send tests/questions/testQuestions arrays'});
+  const batch=normalizeImportBatch(Array.isArray(data.questions)?data.questions:[]);
+  if(batch.errors.length)return res.status(422).json({ok:false,validation:{total:(data.questions||[]).length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length},errors:batch.errors});
+  const client=await pool.connect();let qc=0,tc=0,tqc=0;
+  try{
+    await client.query('BEGIN');
+    for(const t of data.tests||[]){
+      await client.query(`INSERT INTO tests(id,slug,title,institution,category,year,sequence_no,access_type,duration_seconds,published,question_count,metadata) VALUES(COALESCE($1::uuid,gen_random_uuid()),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(slug) DO UPDATE SET title=EXCLUDED.title,institution=EXCLUDED.institution,category=EXCLUDED.category,year=EXCLUDED.year,sequence_no=EXCLUDED.sequence_no,duration_seconds=EXCLUDED.duration_seconds,published=EXCLUDED.published,question_count=EXCLUDED.question_count,metadata=EXCLUDED.metadata,updated_at=NOW()`,[t.id||null,t.slug,t.title,t.institution||null,t.category||null,t.year||null,t.sequence_no||null,t.access_type||'premium',Number(t.duration_seconds||7200),t.published!==false,Number(t.question_count||0),JSON.stringify(t.metadata||{})]);tc++;
+    }
+    for(const q of batch.normalized){
+      await client.query(`INSERT INTO questions(id,subject,topic,subtopic,year,language,question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty,source,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(id) DO UPDATE SET subject=EXCLUDED.subject,topic=EXCLUDED.topic,subtopic=EXCLUDED.subtopic,year=EXCLUDED.year,language=EXCLUDED.language,question_en=EXCLUDED.question_en,question_hi=EXCLUDED.question_hi,options=EXCLUDED.options,answer=EXCLUDED.answer,explanation_en=EXCLUDED.explanation_en,explanation_hi=EXCLUDED.explanation_hi,difficulty=EXCLUDED.difficulty,source=EXCLUDED.source,metadata=EXCLUDED.metadata,updated_at=NOW()`,[q.id,q.subject,q.topic,q.subtopic,q.year,q.language,q.question_en,q.question_hi,JSON.stringify(q.options||[]),q.answer,q.explanation_en,q.explanation_hi,q.difficulty,q.source,JSON.stringify(q.metadata||{})]);qc++;
+    }
+    for(const x of data.testQuestions||[]){
+      await client.query(`INSERT INTO test_questions(test_id,question_id,sort_order) VALUES($1,$2,$3) ON CONFLICT(test_id,question_id) DO UPDATE SET sort_order=EXCLUDED.sort_order`,[x.test_id,x.question_id,Number(x.sort_order||1)]);tqc++;
+    }
+    await client.query(`UPDATE tests t SET question_count=(SELECT COUNT(*) FROM test_questions tq WHERE tq.test_id=t.id)`);
+    await client.query('COMMIT');await audit(req.user,'import_content',null,{tests:tc,questions:qc,testQuestions:tqc});res.json({ok:true,tests:tc,questions:qc,testQuestions:tqc});
+  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message})}finally{client.release()}
+});
 
 // Admin notifications
 app.post('/api/admin/notifications',auth,admin,async(req,res)=>{const b=req.body||{};if(!b.title||!b.message)return res.status(400).json({error:'Title and message are required'});const client=await pool.connect();try{await client.query('BEGIN');const n=await client.query(`INSERT INTO notifications(title,message,type,link,created_by) VALUES($1,$2,$3,$4,$5) RETURNING *`,[String(b.title).trim(),String(b.message).trim(),b.type||'announcement',b.link||null,req.user.id]);let users=[];if(Array.isArray(b.user_ids)&&b.user_ids.length){const q=await client.query(`SELECT id FROM users WHERE role='student' AND status='active' AND id=ANY($1::uuid[])`,[b.user_ids]);users=q.rows}else{const q=await client.query(`SELECT id FROM users WHERE role='student' AND status='active'`);users=q.rows}for(const u of users)await client.query(`INSERT INTO notification_recipients(notification_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`,[n.rows[0].id,u.id]);await client.query('COMMIT');await audit(req.user,'send_notification',null,{notification_id:n.rows[0].id,recipient_count:users.length});res.status(201).json({notification:n.rows[0],recipient_count:users.length})}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message})}finally{client.release()}});
@@ -346,9 +421,16 @@ app.get('/api/battles/history',auth,async(req,res)=>{const q=await pool.query(`S
 app.use(async(req,res)=>res.status(404).sendFile(path.join(__dirname,'public',await hasValidSession(req)?'index.html':'login.html')));
 const port=process.env.PORT||3000;
 async function initializeDatabase(){
+  const dbEnc=await pool.query("SELECT pg_encoding_to_char(encoding) AS encoding FROM pg_database WHERE datname=current_database()");
+  if(dbEnc.rows[0]?.encoding!=='UTF8')throw new Error(`PostgreSQL database encoding must be UTF8; current encoding is ${dbEnc.rows[0]?.encoding||'unknown'}`);
+  await pool.query("SET client_encoding TO 'UTF8'");
   const schemaPath=path.join(__dirname,'schema.sql');
   const schema=fs.readFileSync(schemaPath,'utf8');
   await pool.query(schema);
+  const qcols=await pool.query("SELECT column_name,data_type,udt_name FROM information_schema.columns WHERE table_schema='public' AND table_name='questions' AND column_name IN ('question_en','question_hi','options','answer','explanation_en','explanation_hi')");
+  const qmap=Object.fromEntries(qcols.rows.map(r=>[r.column_name,r]));
+  for(const c of ['question_en','question_hi','explanation_en','explanation_hi'])if(qmap[c]&&!['text','character varying'].includes(qmap[c].data_type))throw new Error(`questions.${c} must be TEXT/VARCHAR; found ${qmap[c].data_type}`);
+  if(qmap.options&&qmap.options.udt_name!=='jsonb')throw new Error(`questions.options must be JSONB; found ${qmap.options.data_type}`);
 
   // Production compatibility migrations. Older DHYEYA databases may already
   // contain these tables with an earlier column set. CREATE TABLE IF NOT EXISTS
