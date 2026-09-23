@@ -1398,10 +1398,10 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 <div class="practice-feedback" id="feedback"></div>
 <div class="quiz-actions-row"><button class="btn" onclick="prevQuestion()" type="button">← Previous</button><button class="btn" onclick="clearResponse()" type="button">Clear Response</button><div class="quiz-action-cluster"><button class="btn" id="bookmarkBtn" onclick="toggleBookmark()" type="button">🔖 Bookmark</button><button class="btn" id="reviewBtn" onclick="toggleReview()" type="button">Mark Review</button><button class="btn" id="reportBtn" onclick="reportCurrentQuestion()" type="button">⚠ Report</button></div><button class="btn primary" onclick="nextQuestion()" type="button">Save &amp; Next →</button></div>
 </div>
-<aside class="navigator premium-navigator"><div class="nav-head"><div><h3>Question Navigator</h3><p class="sub">Jump to any question and track your attempt.</p></div><button class="nav-mobile-close" onclick="closeQuizNavigator()" type="button">×</button></div><div class="nav-legend"><span><i class="dot answered"></i>Answered</span><span><i class="dot current"></i>Current</span><span><i class="dot review"></i>Marked for Review</span><span><i class="dot empty"></i>Not Attempted</span></div><div class="qgrid" id="qgrid"></div><button class="btn primary" onclick="openSubmitModal()" style="width:100%;margin-top:15px" type="button">Submit Test</button></aside>
+<aside class="navigator premium-navigator" aria-hidden="true"><div class="nav-head"><div><h3>Question Navigator</h3><p class="sub">Jump to any question and track your attempt.</p></div><button class="nav-mobile-close" onclick="closeQuizNavigator()" type="button">×</button></div><div class="nav-legend"><span><i class="dot answered"></i>Answered</span><span><i class="dot current"></i>Current</span><span><i class="dot review"></i>Marked for Review</span><span><i class="dot empty"></i>Not Attempted</span></div><div class="qgrid" id="qgrid"></div><button class="btn primary" onclick="openSubmitModal()" style="width:100%;margin-top:15px" type="button">Submit Test</button></aside>
 </div>
 </div>
-<div class="quiz-nav-overlay" id="quizNavOverlay" onclick="closeQuizNavigator()"></div>
+<div class="quiz-nav-overlay" id="quizNavOverlay" aria-hidden="true" onclick="closeQuizNavigator()"></div>
 <!-- RESULT -->
 <div class="page" id="result">
 <div class="result-hero card"><div class="eyebrow">TEST SUBMITTED</div><h1>Performance Report</h1><p class="sub" id="resultSubtitle">Your attempt has been analyzed.</p><div class="result-score-grid"><div><div class="score-ring">—</div><div class="result-score-caption">Overall Score</div></div><div class="result-metrics"><div class="stat"><div class="label">Correct</div><div class="num" id="resultCorrect">—</div></div><div class="stat"><div class="label">Incorrect</div><div class="num" id="resultIncorrect">—</div></div><div class="stat"><div class="label">Unattempted</div><div class="num" id="resultUnanswered">—</div></div><div class="stat"><div class="label">No Valid Answer</div><div class="num" id="resultNoValid">—</div></div></div></div><div class="result-actions"><button class="btn primary" onclick="reviewResult('wrong')" type="button">Review Wrong</button><button class="btn" onclick="reviewResult('all')" type="button">Review All</button><button class="btn" onclick="retryWrongQuestions()" type="button">↻ Retry Wrong</button><button class="btn" onclick="openPage('performance')" type="button">View Performance →</button></div></div>
@@ -1584,7 +1584,7 @@ function quizQuestionType(q){
   if(raw.includes('assertion') || raw.includes('reason')) return 'assertion';
   if(raw.includes('statement')) return 'statement';
   if(/assertion\s*\(?a\)?[\s\S]{0,300}reason\s*\(?[or]\)?/i.test(text)) return 'assertion';
-  if(/(?:consider|following|which of).*statements?[\s\S]{0,500}\n\s*1[.)]\s+/i.test(text)) return 'statement';
+  if(/(?:consider|following|which of).*statements?[\s\S]{0,700}\s1[.)]\s+/i.test(text)) return 'statement';
   return 'mcq';
 }
 function repairMojibake(v){
@@ -1631,12 +1631,32 @@ function extractMatchLists(raw){
   return null;
 }
 function extractStatementItems(raw){
-  const text=String(raw||'').replace(/\r/g,'');
-  const marker=/(?:^|\n)\s*(?:(\d+)[.)]|\(?([A-Z])\)?(?:[.:]|(?=\s))|(?:Statement\s+)([IVX]+)[:.]|\(?([IVX]+)\)?[.:])\s+/g;
-  const all=[];let m;while((m=marker.exec(text)))all.push({start:m.index,pos:m.index+m[0].length,label:m[1]||m[2]||m[3]||m[4]});
+  const text=String(raw||'').replace(/\r/g,'').trim();
+  /* Support both line-separated statements and the common PDF form:
+     '... 1. First statement. 2. Second statement. 3. Third statement. Which...' */
+  const marker=/(?:^|[\s])(?:(\d{1,2})[.)]|\(?([IVX]{1,8})\)?[.)]|(?:Statement\s+)([IVX]+)[:.]|Statement\s+(\d{1,2})[:.])\s+/gi;
+  const all=[];let m;while((m=marker.exec(text))){
+    const label=m[1]||m[2]||m[3]||m[4];
+    all.push({start:m.index+(m[0].match(/^\s+/)?.[0].length||0),pos:marker.lastIndex,label});
+  }
   if(!all.length)return [];
-  const start=all[0].start;let end=text.length;const tail=text.slice(start);const stop=tail.search(/\s+(?:out\s+of\s+these|which\s+of\s+(?:the\s+)?(?:above|following|statements)|which\s+one\s+of\s+(?:the\s+)?(?:above|following)|which\s+of\s+the\s+statements|select\s+the\s+correct|choose\s+the\s+correct|codes?\s*:|choose\s+the\s+most\s+appropriate|options?\s+given)/i);if(stop>0)end=start+stop;
-  const inRange=all.filter(x=>x.start<end);return inRange.map((x,i)=>({label:x.label,text:cleanQuizLine(text.slice(x.pos,i+1<inRange.length?inRange[i+1].start:end))})).filter(x=>x.text);
+  /* Only treat a numeric sequence as statements when it starts at 1 and
+     progresses in order. This avoids mistaking years/quantities for items. */
+  let usable=all;
+  const numeric=all.every(x=>/^\d+$/.test(x.label));
+  if(numeric){
+    const first=all.findIndex(x=>x.label==='1');
+    if(first<0)return [];
+    usable=all.slice(first);
+    let expected=1;
+    usable=usable.filter(x=>Number(x.label)===expected++);
+    if(usable.length<2)return [];
+  }
+  const start=usable[0].start;let end=text.length;const tail=text.slice(start);
+  const stop=tail.search(/(?:^|\s)(?:out\s+of\s+these|which\s+of\s+(?:the\s+)?(?:above|following|statements)|which\s+one\s+of\s+(?:the\s+)?(?:above|following)|which\s+of\s+the\s+statements|select\s+the\s+correct|choose\s+the\s+correct|codes?\s*:|choose\s+the\s+most\s+appropriate|options?\s+given)\b/i);
+  if(stop>=0)end=start+stop;
+  const inRange=usable.filter(x=>x.start<end);
+  return inRange.map((x,i)=>({label:x.label,text:cleanQuizLine(text.slice(x.pos,i+1<inRange.length?inRange[i+1].start:end))})).filter(x=>x.text);
 }
 function extractAssertionReason(raw){
   const text=String(raw||'').replace(/\r/g,'');
@@ -1648,36 +1668,41 @@ function extractAssertionReason(raw){
 }
 function renderStructuredStem(q){
   const raw=cleanQuizLine(q?.question||q?.question_en||'');
-  const type=quizQuestionType(q);let stem=raw,structure='';
+  const rawBi=devanagariSlice(raw);
+  const rawEn=cleanQuizLine(rawBi.en);
+  const rawHi=cleanQuizLine(q?.questionHi||'');
+  const type=quizQuestionType(q);let stem=rawEn||raw,structure='';
   const esc=escapeHtml;
   if(type==='match'){
-    const parsed=extractMatchLists(raw);
+    const parsed=extractMatchLists(rawEn);
     if(parsed){
-      const firsts=[raw.search(/list\s*[-–—]?\s*(?:i|1|f)\b/i),raw.search(/list\s*[-–—]?\s*(?:ii|2)\b/i)].filter(x=>x>=0);const cut=firsts.length?Math.min(...firsts):0;
-      stem=cleanQuizLine(cut>0?raw.slice(0,cut):'Match the following and select the correct answer.');
+      const firsts=[rawEn.search(/list\s*[-–—]?\s*(?:i|1|f)\b/i),rawEn.search(/list\s*[-–—]?\s*(?:ii|2)\b/i)].filter(x=>x>=0);const cut=firsts.length?Math.min(...firsts):0;
+      stem=cleanQuizLine(cut>0?rawEn.slice(0,cut):'Match the following and select the correct answer.');
       const card=(title,items,cls)=>`<div class="structured-list ${cls}"><div class="structured-list-title">${title}</div>${items.map(x=>`<div class="structured-item"><span class="structured-label">${esc(x.label)}</span><span>${esc(x.text)}</span></div>`).join('')}</div>`;
       structure=`<div class="structured-match">${card('List 1',parsed.left,'list-one')}${card('List 2',parsed.right,'list-two')}</div>`;
     }
   }else if(type==='statement'){
-    const items=extractStatementItems(raw);
+    const items=extractStatementItems(rawEn);
     if(!items.length){
-      stem=cleanQuizLine(raw);
-      structure=`<div class="structured-statements"><div class="structured-block-title">Statement</div><div class="statement-box single"><span class="statement-number">•</span><span>${esc(raw)}</span></div></div>`;
+      stem=cleanQuizLine(rawEn||raw);
+      structure=`<div class="structured-statements"><div class="structured-block-title">Statement</div><div class="statement-box single"><span class="statement-number">•</span><span>${esc(rawEn||raw)}</span></div></div>`;
     }else{
-      const first=raw.search(/(?:\n|^)\s*(?:\d+[.)]|\(?[A-Z]\)?(?:[.:]|\s)|Statement\s+[IVX]+[:.])\s*/);stem=cleanQuizLine(first>0?raw.slice(0,first):raw);
+      const first=rawEn.search(/(?:^|\s)(?:\d+[.)]|\(?[A-Z]\)?(?:[.:]|\s)|Statement\s+[IVX]+[:.])\s*/);stem=cleanQuizLine(first>0?rawEn.slice(0,first):rawEn);
       structure=`<div class="structured-statements"><div class="structured-block-title">Statements</div>${items.map(x=>{const bi=devanagariSlice(x.text);return `<div class="statement-box"><span class="statement-number">${esc(x.label)}</span><span><div>${esc(bi.en)}</div>${bi.hi?`<div class="statement-hi">${esc(bi.hi)}</div>`:''}</span></div>`}).join('')}</div>`;
     }
   }else if(type==='assertion'){
-    const ar=extractAssertionReason(raw);
+    const ar=extractAssertionReason(rawEn);
     if(ar){
-      const am=raw.search(/assertion\s*\(?a\)?\s*[:\-–—]?\s*/i);stem=cleanQuizLine(am>0?raw.slice(0,am):'Consider the following statements:');
+      const am=rawEn.search(/assertion\s*\(?a\)?\s*[:\-–—]?\s*/i);stem=cleanQuizLine(am>0?rawEn.slice(0,am):'Consider the following statements:');
       structure=`<div class="structured-assertion"><div class="assertion-box"><div class="assertion-title">Assertion (A)</div><div>${esc(ar.assertion)}</div></div><div class="reason-box"><div class="assertion-title">Reason (R)</div><div>${esc(ar.reason)}</div></div></div>`;
     }
   }
-  const sourceBi=devanagariSlice(q?.question||q?.question_en||'');
+  const sourceBi=rawBi;
   const hiCandidate=repairMojibake(q?.questionHi||'');
+  /* Never render replacement-character Hindi. If the bilingual question was
+     imported as one combined field, use only the clean Devanagari segment. */
   const bilingualText=(!hiCandidate||hasReplacement(hiCandidate))?sourceBi.hi:hiCandidate;
-  const bilingual=bilingualText?`<div class="question-hi">${esc(bilingualText)}</div>`:'';
+  const bilingual=bilingualText&&!hasReplacement(bilingualText)?`<div class="question-hi">${esc(bilingualText)}</div>`:'';
   if(type==='mcq' && sourceBi.hi) stem=sourceBi.en;
   return {type,stem,structure,bilingual};
 }
@@ -1720,7 +1745,7 @@ function selectAnswer(i){
   document.querySelectorAll('.answer-option').forEach((b,n)=>{if(n<q.options.length)b.classList.toggle('selected',n===i);else b.classList.toggle('selected',i===null)});
   if(quiz.mode==='practice' && i!==null){
     const fb=document.getElementById('feedback');
-    const ex=devanagariSlice(q.explanation||''); const exHi=repairMojibake(q.explanationHi||''); const hi=(exHi&&!hasReplacement(exHi))?exHi:ex.hi; const explanationHtml=`<div class="ex-en">${escapeHtml(ex.en||'')}</div>${hi?`<div class="ex-hi">${escapeHtml(hi)}</div>`:''}`;
+    const ex=devanagariSlice(q.explanation||''); const exHi=repairMojibake(q.explanationHi||''); const hi=(exHi&&!hasReplacement(exHi))?exHi:(!hasReplacement(ex.hi)?ex.hi:''); const explanationHtml=`<div class="ex-en">${escapeHtml(ex.en||'')}</div>${hi?`<div class="ex-hi">${escapeHtml(hi)}</div>`:''}`;
     if(q.answer===null || q.answer===undefined){fb.className='practice-feedback neutral';fb.innerHTML='<b>No valid answer.</b> '+explanationHtml;}
     else {const ok=Number(i)===Number(q.answer);fb.className='practice-feedback '+(ok?'ok':'bad');fb.innerHTML=(ok?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+explanationHtml;if(!ok)addRevision(q.id);}
   }
@@ -1751,8 +1776,19 @@ function renderNavigator(){
     box.appendChild(b)
   })
 }
-function openQuizNavigator(){const nav=document.querySelector('.premium-navigator');if(nav)nav.classList.add('mobile-open');document.getElementById('quizNavOverlay')?.classList.add('show')}
-function closeQuizNavigator(){document.querySelector('.premium-navigator')?.classList.remove('mobile-open');document.getElementById('quizNavOverlay')?.classList.remove('show')}
+function openQuizNavigator(){
+  const nav=document.querySelector('.premium-navigator'), overlay=document.getElementById('quizNavOverlay');
+  if(nav?.classList.contains('mobile-open')){closeQuizNavigator();return}
+  nav?.classList.add('mobile-open'); overlay?.classList.add('show');
+  nav?.setAttribute('aria-hidden','false'); overlay?.setAttribute('aria-hidden','false');
+}
+function closeQuizNavigator(){
+  const nav=document.querySelector('.premium-navigator'), overlay=document.getElementById('quizNavOverlay');
+  nav?.classList.remove('mobile-open'); overlay?.classList.remove('show');
+  nav?.setAttribute('aria-hidden','true'); overlay?.setAttribute('aria-hidden','true');
+}
+window.addEventListener('orientationchange',()=>setTimeout(closeQuizNavigator,50));
+window.addEventListener('resize',()=>{if(window.innerWidth>1180)closeQuizNavigator()});
 
 function updateTimer(){
   const s=Math.max(0,quiz.remaining),m=Math.floor(s/60),sec=s%60;const el=document.getElementById('quizTimer');if(!el)return;
