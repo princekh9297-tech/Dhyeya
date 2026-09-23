@@ -142,9 +142,16 @@ app.patch('/api/quiz-sessions/current',auth,async(req,res)=>{
 app.delete('/api/quiz-sessions/current',auth,async(req,res)=>{await pool.query("UPDATE quiz_sessions SET status='abandoned',updated_at=NOW() WHERE user_id=$1 AND status='in_progress'",[req.user.id]);res.json({ok:true})});
 
 // Admin Question Bank import — ongoing content management without GitHub updates.
+function repairImportedUnicode(value){
+  const s=String(value??'');
+  if(!/(?:Ã|Â|à¤|à¦|â€|ðŸ)/.test(s)) return s;
+  try{ const bytes=[...s].map(ch=>ch.charCodeAt(0)); if(bytes.some(c=>c>255)) return s; const fixed=Buffer.from(bytes).toString('utf8'); return fixed.includes('�')&&!s.includes('�')?s:fixed; }catch{return s;}
+}
+function cleanImportedField(value){return repairImportedUnicode(value).normalize('NFC').trim();}
+function splitImportedBilingual(value){const s=cleanImportedField(value); const i=s.search(/[\u0900-\u097F]/); return i>=0?{en:s.slice(0,i).trim(),hi:s.slice(i).trim()}:{en:s,hi:''};}
 function normalizeImportedQuestion(q, index){
   const raw={...(q||{})};
-  const question_en=String(raw.question_en??raw.question??raw.questionText??'').trim();
+  const combined=splitImportedBilingual(raw.question_en??raw.question??raw.questionText??''); const question_en=combined.en;
   if(!question_en) throw new Error(`Row ${index}: question_en/question is required`);
   let options=raw.options;
   if(typeof options==='string'){
@@ -167,7 +174,7 @@ function normalizeImportedQuestion(q, index){
   const fingerprint=crypto.createHash('sha256').update([question_en,JSON.stringify(options)].join('\n').trim().toLowerCase()).digest('hex').slice(0,24); const id=String(raw.id||`IMP-${fingerprint}`).trim();
   const metadata={...(raw.metadata&&typeof raw.metadata==='object'?raw.metadata:{})};
   for(const key of ['category','source_exam','source_page','page','source_image','source_image_url']) if(raw[key]!==undefined) metadata[key]=raw[key];
-  return {id,subject:raw.subject||null,topic:raw.topic||null,subtopic:raw.subtopic||null,year:raw.year?Number(raw.year):null,language:raw.language||'english',question_en,question_hi:raw.question_hi||null,options,answer,explanation_en:raw.explanation_en??raw.explanation??null,explanation_hi:raw.explanation_hi??null,difficulty:raw.difficulty||null,source:raw.source||'Admin Question Bank Import',metadata};
+  const suppliedHi=cleanImportedField(raw.question_hi||''); const question_hi=(suppliedHi&&!suppliedHi.includes('�'))?suppliedHi:(combined.hi||null); const expCombined=splitImportedBilingual(raw.explanation_en??raw.explanation??''); const suppliedExpHi=cleanImportedField(raw.explanation_hi||''); const explanation_en=expCombined.en||null; const explanation_hi=(suppliedExpHi&&!suppliedExpHi.includes('�'))?suppliedExpHi:(expCombined.hi||null); return {id,subject:raw.subject||null,topic:raw.topic||null,subtopic:raw.subtopic||null,year:raw.year?Number(raw.year):null,language:raw.language||'bilingual',question_en,question_hi,options,answer,explanation_en,explanation_hi,difficulty:raw.difficulty||null,source:raw.source||'Admin Question Bank Import',metadata};
 }
 async function importQuestionsToDb(questions,testConfig=null,actor=null){
   const client=await pool.connect(); let inserted=0,updated=0,testId=null,mapped=0;
@@ -247,7 +254,7 @@ function parsePdfQuestionBlock(block,index){
   else if(/statement\s*[i1]|following\s+statements|which\s+of\s+the\s+statements/i.test(stem))question_type='statement';
   else if(/chronolog|arrange.*order|sequence/i.test(stem))question_type='sequence';
   const metadata={import_parser:'pdf-text',question_type,parse_confidence:answer?'high':'review'};
-  return {id:`PDF-${Date.now().toString(36)}-${index}-${crypto.randomBytes(3).toString('hex')}`,question_en:stem,options,answer,explanation_en:explanation||null,source:'Admin PDF Import',metadata};
+  const qbi=splitImportedBilingual(stem); const exi=splitImportedBilingual(explanation||''); if(qbi.en.includes('�')||exi.en.includes('�')) metadata.parse_confidence='review'; return {id:`PDF-${Date.now().toString(36)}-${index}-${crypto.randomBytes(3).toString('hex')}`,question_en:qbi.en,question_hi:qbi.hi||null,options:options.map(cleanImportedField),answer,explanation_en:exi.en||null,explanation_hi:exi.hi||null,source:'Admin PDF Import',metadata};
 }
 async function parseUploadedFile(file){
   const name=String(file.originalname||'').toLowerCase();
