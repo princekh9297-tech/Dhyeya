@@ -1033,6 +1033,10 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 #quiz .qdot.done{background:color-mix(in srgb,var(--green) 12%,var(--card));color:var(--green)}
 #quiz .qdot.review{background:color-mix(in srgb,var(--purple) 12%,var(--card));color:var(--purple)}
 #quiz .nav-legend .dot.current{background:var(--dh-accent,var(--gold))}
+#quiz .nav-legend .dot.empty{width:8px;height:8px;background:#98a2b3;border:0}
+#quiz .nav-legend .dot.review{background:#d94b4b}
+#quiz .qdot.review{background:color-mix(in srgb,#d94b4b 14%,var(--card));color:#c63f3f;border-color:color-mix(in srgb,#d94b4b 35%,var(--line))}
+#quiz .qdot.current{background:var(--dh-accent,var(--gold));color:#fff;border-color:var(--dh-accent,var(--gold));box-shadow:0 0 0 2px color-mix(in srgb,var(--dh-accent,var(--gold)) 22%,transparent)}
 #quiz .nav-legend .dot.review{background:#d94b4b}
 #quiz .qdot.review{background:color-mix(in srgb,#d94b4b 14%,var(--card));color:#c63f3f;border-color:color-mix(in srgb,#d94b4b 35%,var(--line))}
 #quiz .qdot.current{background:var(--dh-accent,var(--gold));color:#fff;border-color:var(--dh-accent,var(--gold))}
@@ -1072,7 +1076,52 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
   #quiz .nav-mobile-close{display:block}
   #quiz .qgrid{max-height:calc(100vh - 210px)}
 }
+@media (min-width:601px) and (max-width:900px){
+  /* iPad/tablet portrait: keep the full CBT control set visible. */
+  #quiz .quiz-actions-row{
+    display:flex;
+    flex-wrap:nowrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:7px;
+  }
+  #quiz .quiz-actions-row>.btn:nth-child(2),
+  #quiz .quiz-action-cluster{display:flex;}
+  #quiz .quiz-action-cluster{
+    flex:1 1 auto;
+    min-width:0;
+    justify-content:center;
+    gap:6px;
+  }
+  #quiz .quiz-actions-row>.btn{
+    flex:0 1 auto;
+    min-width:0;
+    white-space:nowrap;
+    padding-inline:10px;
+  }
+  #quiz .quiz-action-cluster .btn{
+    flex:1 1 0;
+    min-width:0;
+    padding-inline:7px;
+    white-space:nowrap;
+  }
+  #quiz .quiz-actions-row>.btn:last-child{margin-left:0;}
+}
 @media(min-width:901px){#quiz .quizNavBtn{display:none}}
+/* V4.2.2 — iPad/tablet CBT navigator is a drawer in both orientations. */
+.qtop-left{display:flex;align-items:center;gap:10px;min-width:0}
+.quizNavBtnTop{display:none;height:34px;padding:0 10px;border-radius:9px;font-size:11px;white-space:nowrap}
+@media (max-width:1180px) and (pointer:coarse){
+  #quiz .premium-quiz-shell{display:block;grid-template-columns:1fr!important}
+  #quiz .premium-navigator{position:fixed!important;right:0!important;top:0!important;bottom:0!important;width:min(390px,88vw)!important;z-index:160!important;transform:translateX(110%)!important;transition:transform .22s ease!important;box-shadow:-20px 0 70px rgba(0,0,0,.35)!important;display:block!important;overflow:auto!important}
+  #quiz .premium-navigator.mobile-open{transform:translateX(0)!important}
+  #quiz .quiz-nav-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:159;display:none}
+  #quiz .quiz-nav-overlay.show{display:block}
+  #quiz .quizNavBtn{display:none!important}
+  #quiz .quizNavBtnTop{display:inline-flex;align-items:center;justify-content:center}
+  #quiz .qtop-left{gap:9px}
+}
+@media (max-width:600px){#quiz .quizNavBtnTop{font-size:10px;padding:0 9px;height:32px}}
 @media(max-width:380px){#quiz .pq-actions #quizModePill{display:none}#quiz .pq-title h1{max-width:155px}}
 
 
@@ -1321,7 +1370,7 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 <div class="quiz-progress"><i id="quizProgressBar"></i></div>
 <div class="quiz-shell premium-quiz-shell">
 <div class="quiz-main">
-<div class="quiz-top premium-qtop"><span class="qnum" id="qNum">QUESTION 1 OF 5</span><div class="qstatus"><span class="pill" id="qAnsweredStatus">0 Answered</span><span class="pill violet" id="qReviewStatus">0 Review</span></div></div>
+<div class="quiz-top premium-qtop"><div class="qtop-left"><span class="qnum" id="qNum">QUESTION 1 OF 5</span><button class="btn quizNavBtnTop" id="quizNavBtnTop" onclick="openQuizNavigator()" type="button">☷ Navigator</button></div><div class="qstatus"><span class="pill" id="qAnsweredStatus">0 Answered</span><span class="pill violet" id="qReviewStatus">0 Review</span></div></div>
 <div class="question-placeholder" id="questionArea"><strong>Loading…</strong>Please wait.</div>
 <div class="options" id="options"></div>
 <div class="practice-feedback" id="feedback"></div>
@@ -1742,10 +1791,10 @@ function institutionOpen(name){
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{t.parentElement.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active')}));
-window.addEventListener('beforeunload',()=>{if(quiz.questions.length)saveResume()});
+window.addEventListener('beforeunload',()=>{if(quiz.questions.length)saveResume();saveState()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&quiz.questions.length)saveResume()});
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeUtilityHub();closeAccessModal();}
+  if(e.key==='Escape'){closeUtilityHub();closeAccessModal();closeQuizNavigator();}
   if(document.getElementById('quiz').classList.contains('active')){
     if(e.key==='ArrowRight')nextQuestion();
     if(e.key==='ArrowLeft')prevQuestion();
