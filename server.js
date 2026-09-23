@@ -36,7 +36,7 @@ app.get('/',async(req,res)=>{
     const u=q.rows[0];
     if(!u||u.status!=='active'){clearAuth(res);return res.sendFile(path.join(__dirname,'public','login.html'));}
     res.set('Cache-Control','no-store');
-    return res.sendFile(path.join(__dirname,'public',u.role==='admin'?'admin.html':'index.html'));
+    return res.sendFile(path.join(__dirname,'public','index.html'));
   }catch{clearAuth(res);return res.sendFile(path.join(__dirname,'public','login.html'));}
 });
 app.get('/admin',auth,admin,(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
@@ -382,7 +382,7 @@ app.delete('/api/admin/questions/:id',auth,admin,async(req,res)=>{
 app.post('/api/admin/questions/bulk-delete',auth,admin,async(req,res)=>{
   const ids=Array.isArray(req.body?.ids)?[...new Set(req.body.ids.map(String).filter(Boolean))]:[];
   if(!ids.length)return res.status(400).json({error:'No question IDs supplied.'});
-  if(ids.length>1000)return res.status(400).json({error:'Maximum 1,000 questions per bulk delete.'});
+  if(ids.length>50000)return res.status(400).json({error:'Maximum 50,000 questions per bulk operation.'});
   const client=await pool.connect();
   try{await client.query('BEGIN');const r=await client.query('DELETE FROM questions WHERE id = ANY($1::text[]) RETURNING id',[ids]);await client.query('COMMIT');await audit(req.user,'question_bank_bulk_delete',null,{requested:ids.length,deleted:r.rowCount});res.json({ok:true,deleted:r.rowCount,requested:ids.length});}
   catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Bulk delete failed.'})}finally{client.release()}
@@ -395,8 +395,96 @@ app.delete('/api/admin/tests/:id/questions',auth,admin,async(req,res)=>{
   }catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Could not clear test questions.'})}finally{client.release()}
 });
 
+// Student ↔ Admin support messaging
+app.get('/api/support',auth,async(req,res)=>{
+  try{
+    const t=(await pool.query(`SELECT id,subject,status,created_at,updated_at,last_message_at FROM support_threads WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 1`,[req.user.id])).rows[0];
+    if(!t)return res.json({thread:null,messages:[]});
+    const m=(await pool.query(`SELECT id,sender_id,sender_role,message,created_at,read_at FROM support_messages WHERE thread_id=$1 ORDER BY created_at ASC LIMIT 300`,[t.id])).rows;
+    if(req.user.role==='student') await pool.query(`UPDATE support_messages SET read_at=COALESCE(read_at,NOW()) WHERE thread_id=$1 AND sender_role='admin' AND read_at IS NULL`,[t.id]);
+    res.json({thread:t,messages:m});
+  }catch(e){res.status(500).json({error:'Could not load support messages.'})}
+});
+app.post('/api/support/messages',auth,async(req,res)=>{
+  const message=String(req.body?.message||'').trim();
+  const subject=String(req.body?.subject||'General Support').trim().slice(0,160)||'General Support';
+  if(!message)return res.status(400).json({error:'Message cannot be empty.'});
+  if(message.length>5000)return res.status(400).json({error:'Message is too long. Maximum 5,000 characters.'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    let t=(await client.query(`SELECT * FROM support_threads WHERE user_id=$1 FOR UPDATE`,[req.user.id])).rows[0];
+    if(!t){t=(await client.query(`INSERT INTO support_threads(user_id,subject,status,last_message_at) VALUES($1,$2,'open',NOW()) RETURNING *`,[req.user.id,subject])).rows[0]}
+    else if(t.status==='closed') t=(await client.query(`UPDATE support_threads SET status='open',subject=$2,updated_at=NOW(),last_message_at=NOW() WHERE id=$1 RETURNING *`,[t.id,subject])).rows[0];
+    else t=(await client.query(`UPDATE support_threads SET subject=COALESCE(NULLIF($2,''),subject),updated_at=NOW(),last_message_at=NOW() WHERE id=$1 RETURNING *`,[t.id,subject])).rows[0];
+    const m=(await client.query(`INSERT INTO support_messages(thread_id,sender_id,sender_role,message) VALUES($1,$2,'student',$3) RETURNING *`,[t.id,req.user.id,message])).rows[0];
+    await client.query('COMMIT');
+    await audit(req.user,'support_message_sent',req.user.id,{thread_id:t.id});
+    res.status(201).json({thread:t,message:m});
+  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:'Could not send message.'})}finally{client.release()}
+});
+app.get('/api/admin/support',auth,admin,async(req,res)=>{
+  const status=req.query.status;
+  const p=[]; let where='';
+  if(status&&['open','closed'].includes(status)){p.push(status);where=`WHERE t.status=$1`}
+  const q=await pool.query(`SELECT t.id,t.user_id,t.subject,t.status,t.created_at,t.updated_at,t.last_message_at,u.name,u.student_code,u.email,(SELECT COUNT(*) FROM support_messages sm WHERE sm.thread_id=t.id AND sm.sender_role='student' AND sm.read_at IS NULL)::int unread FROM support_threads t JOIN users u ON u.id=t.user_id ${where} ORDER BY t.last_message_at DESC NULLS LAST LIMIT 500`,p);
+  res.json({threads:q.rows});
+});
+app.get('/api/admin/support/:id',auth,admin,async(req,res)=>{
+  const t=(await pool.query(`SELECT t.*,u.name,u.student_code,u.email FROM support_threads t JOIN users u ON u.id=t.user_id WHERE t.id=$1`,[req.params.id])).rows[0];
+  if(!t)return res.status(404).json({error:'Support thread not found.'});
+  const m=(await pool.query(`SELECT id,sender_id,sender_role,message,created_at,read_at FROM support_messages WHERE thread_id=$1 ORDER BY created_at ASC LIMIT 500`,[t.id])).rows;
+  await pool.query(`UPDATE support_messages SET read_at=COALESCE(read_at,NOW()) WHERE thread_id=$1 AND sender_role='student' AND read_at IS NULL`,[t.id]);
+  res.json({thread:t,messages:m});
+});
+app.post('/api/admin/support/:id/messages',auth,admin,async(req,res)=>{
+  const message=String(req.body?.message||'').trim();
+  if(!message)return res.status(400).json({error:'Message cannot be empty.'});
+  if(message.length>5000)return res.status(400).json({error:'Message is too long. Maximum 5,000 characters.'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const t=(await client.query(`SELECT * FROM support_threads WHERE id=$1 FOR UPDATE`,[req.params.id])).rows[0];
+    if(!t){await client.query('ROLLBACK');return res.status(404).json({error:'Support thread not found.'})}
+    const m=(await client.query(`INSERT INTO support_messages(thread_id,sender_id,sender_role,message) VALUES($1,$2,'admin',$3) RETURNING *`,[t.id,req.user.id,message])).rows[0];
+    await client.query(`UPDATE support_threads SET status='open',updated_at=NOW(),last_message_at=NOW() WHERE id=$1`,[t.id]);
+    await client.query('COMMIT');
+    await audit(req.user,'support_admin_reply',t.user_id,{thread_id:t.id});
+    res.status(201).json({message:m});
+  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:'Could not send reply.'})}finally{client.release()}
+});
+app.patch('/api/admin/support/:id',auth,admin,async(req,res)=>{
+  const status=req.body?.status;
+  if(!['open','closed'].includes(status))return res.status(400).json({error:'Invalid support status.'});
+  const q=await pool.query(`UPDATE support_threads SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *`,[status,req.params.id]);
+  if(!q.rows[0])return res.status(404).json({error:'Support thread not found.'});
+  await audit(req.user,'support_status_change',q.rows[0].user_id,{thread_id:req.params.id,status});
+  res.json({thread:q.rows[0]});
+});
+app.delete('/api/admin/tests/:id',auth,admin,async(req,res)=>{
+  const testId=String(req.params.id); const deleteQuestions=req.query.delete_questions==='true'; const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const t=(await client.query('SELECT id,title FROM tests WHERE id=$1 FOR UPDATE',[testId])).rows[0];
+    if(!t){await client.query('ROLLBACK');return res.status(404).json({error:'Test/section not found.'})}
+    const qids=(await client.query('SELECT question_id FROM test_questions WHERE test_id=$1',[testId])).rows.map(r=>r.question_id);
+    await client.query('DELETE FROM test_questions WHERE test_id=$1',[testId]);
+    let deletedQuestions=0;
+    if(deleteQuestions && qids.length){
+      const r=await client.query(`DELETE FROM questions q WHERE q.id=ANY($1::text[]) AND NOT EXISTS (SELECT 1 FROM test_questions tq WHERE tq.question_id=q.id) RETURNING q.id`,[qids]);
+      deletedQuestions=r.rowCount;
+    }
+    await client.query('DELETE FROM tests WHERE id=$1',[testId]);
+    await client.query('COMMIT');
+    await audit(req.user,'test_section_delete',null,{test_id:testId,test_title:t.title,mappings_removed:qids.length,questions_deleted:deletedQuestions,delete_questions:deleteQuestions});
+    res.json({ok:true,test_id:testId,title:t.title,mappings_removed:qids.length,questions_deleted:deletedQuestions});
+  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Could not delete section.'})}finally{client.release()}
+});
+
+
 // Admin
-app.get('/api/admin/stats',auth,admin,async(_req,res)=>{const q=await pool.query(`SELECT (SELECT COUNT(*) FROM users WHERE role='student') users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='active') active_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='blocked') blocked_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='deactivated') deactivated_users,(SELECT COUNT(*) FROM tests) tests,(SELECT COUNT(*) FROM questions) questions,(SELECT COUNT(*) FROM test_attempts) attempts,(SELECT COALESCE(SUM(xp_amount),0) FROM xp_ledger) xp_awarded,(SELECT COUNT(*) FROM planner_tasks WHERE completed=FALSE) open_tasks`);res.json({stats:q.rows[0]})});
+app.get('/api/admin/stats'
+,auth,admin,async(_req,res)=>{const q=await pool.query(`SELECT (SELECT COUNT(*) FROM users WHERE role='student') users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='active') active_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='blocked') blocked_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='deactivated') deactivated_users,(SELECT COUNT(*) FROM tests) tests,(SELECT COUNT(*) FROM questions) questions,(SELECT COUNT(*) FROM test_attempts) attempts,(SELECT COALESCE(SUM(xp_amount),0) FROM xp_ledger) xp_awarded,(SELECT COUNT(*) FROM planner_tasks WHERE completed=FALSE) open_tasks`);res.json({stats:q.rows[0]})});
 app.get('/api/admin/users',auth,admin,async(req,res)=>{const search=(req.query.search||'').trim();const status=req.query.status;const p=[];let s="SELECT id,student_code,email,name,username,role,status,target_exam,xp,level,streak_days,last_login_at,created_at FROM users WHERE role='student'";if(search){p.push('%'+search.toLowerCase()+'%');s+=` AND (lower(coalesce(name,'')) LIKE $${p.length} OR lower(coalesce(email,'')) LIKE $${p.length} OR lower(coalesce(username,'')) LIKE $${p.length} OR lower(coalesce(student_code,'')) LIKE $${p.length})`}if(status){p.push(status);s+=` AND status=$${p.length}`}s+=' ORDER BY created_at DESC LIMIT 500';res.json({users:(await pool.query(s,p)).rows})});
 app.get('/api/admin/users/:id/activity',auth,admin,async(req,res)=>{const u=(await pool.query("SELECT id,student_code,email,name,username,status,last_login_at,created_at FROM users WHERE id=$1 AND role='student'",[req.params.id])).rows[0];if(!u)return res.status(404).json({error:'Student not found'});const logs=(await pool.query('SELECT action,details,created_at FROM audit_logs WHERE target_user_id=$1 ORDER BY created_at DESC LIMIT 500',[req.params.id])).rows;const attempts=(await pool.query('SELECT id,test_id,mode,score,total_questions,accuracy,submitted_at FROM test_attempts WHERE user_id=$1 ORDER BY submitted_at DESC LIMIT 100',[req.params.id])).rows;const battles=(await pool.query('SELECT id,status,subject,question_count,started_at,finished_at,winner_id FROM battle_rooms WHERE creator_id=$1 OR accepted_by=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id])).rows;res.json({user:u,activity:logs,attempts,battles})});
 app.post('/api/admin/users',auth,admin,async(req,res)=>{const b=req.body||{};const name=(b.name||'New Student').trim();const email=b.email?.trim().toLowerCase()||null;const username=b.username?.trim()||null;const password=b.password?.trim()||makePassword();const code=b.student_code?.trim()||makeStudentCode();if(password.length<8)return res.status(400).json({error:'Password must be at least 8 characters'});try{const hash=await bcrypt.hash(password,12);const q=await pool.query(`INSERT INTO users(student_code,email,password_hash,name,username,target_exam,daily_target,role,status) VALUES($1,$2,$3,$4,$5,$6,$7,'student','active') RETURNING *`,[code,email,hash,name,username,b.target_exam||'BPSC Prelims',Number(b.daily_target||100)]);await audit(req.user,'create_student',q.rows[0].id,{student_code:code});res.status(201).json({user:publicUser(q.rows[0]),credentials:{student_code:code,username:username||null,email,password}})}catch(e){res.status(409).json({error:e.code==='23505'?'Student ID, email or username already exists':'Could not create student'})}});
@@ -467,6 +555,29 @@ async function initializeDatabase(){
   const addColumn = async (table, column, definition) => {
     await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
   };
+
+  // Support messaging: one student thread with bidirectional messages.
+  await pool.query(`CREATE TABLE IF NOT EXISTS support_threads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL DEFAULT 'General Support',
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+    last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_support_thread_user ON support_threads(user_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_threads_status_time ON support_threads(status,last_message_at DESC)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS support_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thread_id UUID NOT NULL REFERENCES support_threads(id) ON DELETE CASCADE,
+    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sender_role TEXT NOT NULL CHECK (sender_role IN ('student','admin')),
+    message TEXT NOT NULL,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_thread_time ON support_messages(thread_id,created_at ASC)`);
 
   // Notifications compatibility. This fixes legacy databases where the
   // notifications table existed before type/link/created_by were introduced.

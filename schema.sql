@@ -158,6 +158,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_quiz_sessions_one_open_per_user ON quiz_se
 CREATE INDEX IF NOT EXISTS idx_quiz_sessions_user_status ON quiz_sessions(user_id,status,updated_at DESC);
 
 
+-- DHYEYA Support: student-to-admin conversations
+CREATE TABLE IF NOT EXISTS support_threads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  subject TEXT NOT NULL DEFAULT 'General Support',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_support_thread_user ON support_threads(user_id);
+CREATE INDEX IF NOT EXISTS idx_support_threads_status_time ON support_threads(status,last_message_at DESC);
+CREATE TABLE IF NOT EXISTS support_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id UUID NOT NULL REFERENCES support_threads(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sender_role TEXT NOT NULL CHECK (sender_role IN ('student','admin')),
+  message TEXT NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_support_messages_thread_time ON support_messages(thread_id,created_at ASC);
+
 -- DHYEYA V3: notifications, presence and Battle Arena
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

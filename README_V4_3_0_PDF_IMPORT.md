@@ -1,4 +1,4 @@
-# DHYEYA V4.3.0 — Fast PDF Question Import
+# DHYEYA V4.3.1 — Fast PDF Question Import
 
 ## Goal
 Add questions from a question-paper PDF directly into DHYEYA without manually converting PDF → CSV → JSON.
