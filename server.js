@@ -255,10 +255,20 @@ function splitPdfBlocks(text){
   const cleaned=String(text||'').replace(/\u00a0/g,' ').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n');
   return cleaned.split(/\n\s*(?=(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s+)/i).map(x=>x.trim()).filter(Boolean);
 }
-function parsePdfQuestionBlock(block,index){
-  let s=block.replace(/^(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s*/i,'').trim();
+function hasHindi(s){return /[\u0900-\u097F]/.test(String(s||''));}
+function hindiIntegrity(s){
+  const v=String(s||'');
+  if(!v) return {status:'missing',label:'Hindi missing'};
+  if(v.includes('\uFFFD')) return {status:'broken',label:'Replacement character'};
+  if(looksLikeMojibake(v)) return {status:'broken',label:'Possible mojibake'};
+  if(!hasHindi(v)) return {status:'missing',label:'Hindi missing'};
+  return {status:'ok',label:'Hindi OK'};
+}
+function parsePdfQuestionBlock(block,index,sourceHash){
+  let s=String(block||'').replace(/\u0000/g,'').trim();
+  s=s.replace(/^(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s*/i,'').trim();
   const answerMatch=s.match(/(?:^|\n)\s*(?:answer|ans|correct\s*answer)\s*[:\-]?\s*([ABCDE])\b/i);
-  const explanationMatch=s.match(/(?:^|\n)\s*(?:explanation|solution)\s*[:\-]?\s*([\s\S]+)$/i);
+  const explanationMatch=s.match(/(?:^|\n)\s*(?:explanation|solution|exp)\s*[:\-]?\s*([\s\S]+)$/i);
   const answer=answerMatch?answerMatch[1].toUpperCase():null;
   if(answerMatch)s=s.slice(0,answerMatch.index).trim();
   let explanation=explanationMatch?explanationMatch[1].trim():null;
@@ -273,22 +283,37 @@ function parsePdfQuestionBlock(block,index){
   else if(/assertion\s*[:\-]|reason\s*[:\-]|assertion\s*\(a\).*reason\s*\(r\)/is.test(stem))question_type='assertion_reason';
   else if(/statement\s*[i1]|following\s+statements|which\s+of\s+the\s+statements/i.test(stem))question_type='statement';
   else if(/chronolog|arrange.*order|sequence/i.test(stem))question_type='sequence';
-  const metadata={import_parser:'pdf-text',question_type,parse_confidence:answer?'high':'review'};
-  const qbi=splitImportedBilingual(stem); const exi=splitImportedBilingual(explanation||''); if(qbi.en.includes('�')||exi.en.includes('�')) metadata.parse_confidence='review'; return {id:`PDF-${Date.now().toString(36)}-${index}-${crypto.randomBytes(3).toString('hex')}`,question_en:qbi.en,question_hi:qbi.hi||null,options:options.map(cleanImportedField),answer,explanation_en:exi.en||null,explanation_hi:exi.hi||null,source:'Admin PDF Import',metadata};
+  const qbi=splitImportedBilingual(stem); const exi=splitImportedBilingual(explanation||'');
+  const combined=[qbi.en,qbi.hi||'',...options,exi.en||'',exi.hi||''].join('\n');
+  const hindi=hindiIntegrity(qbi.hi||options.join('\n')||exi.hi||'');
+  const metadata={import_parser:'pdf-text',question_type,parse_confidence:answer?'high':'review',hindi_status:hindi.status,hindi_label:hindi.label,source_block:index};
+  if(hindi.status==='broken')metadata.parse_confidence='review';
+  const id=`PDF-${sourceHash.slice(0,12)}-${String(index).padStart(5,'0')}`;
+  return {id,question_en:qbi.en,question_hi:qbi.hi||null,options:options.map(cleanImportedField),answer,explanation_en:exi.en||null,explanation_hi:exi.hi||null,source:'Admin PDF Import',metadata};
 }
 async function parseUploadedFile(file){
   const name=String(file.originalname||'').toLowerCase();
-  if(name.endsWith('.json')){const data=JSON.parse(file.buffer.toString('utf8'));return Array.isArray(data)?data:(Array.isArray(data.questions)?data.questions:[])}
-  if(name.endsWith('.csv'))return csvRows(file.buffer.toString('utf8'));
+  if(name.endsWith('.json')){const data=JSON.parse(file.buffer.toString('utf8'));return {questions:Array.isArray(data)?data:(Array.isArray(data.questions)?data.questions:[]),held:[]}}
+  if(name.endsWith('.csv'))return {questions:csvRows(file.buffer.toString('utf8')),held:[]};
   if(name.endsWith('.pdf')){
-    const parsed=await pdfParse(file.buffer); const blocks=splitPdfBlocks(parsed.text); const out=[]; const held=[];
-    blocks.forEach((b,i)=>{const q=parsePdfQuestionBlock(b,i+1);if(q)out.push(q);else held.push({index:i+1,raw:b.slice(0,2000)})});
-    return {questions:out,held,total_blocks:blocks.length,pages:parsed.numpages,text_chars:parsed.text.length};
+    const parsed=await pdfParse(file.buffer); const blocks=splitPdfBlocks(parsed.text); const out=[]; const held=[]; const sourceHash=crypto.createHash('sha256').update(file.buffer).digest('hex');
+    blocks.forEach((b,i)=>{try{const q=parsePdfQuestionBlock(b,i+1,sourceHash);if(!q)held.push({index:i+1,reason:'Could not detect question/options/answer structure',raw:b.slice(0,2000)});else out.push(q)}catch(e){held.push({index:i+1,reason:e.message||'Parser error',raw:b.slice(0,2000)})}});
+    return {questions:out,held,total_blocks:blocks.length,pages:parsed.numpages,text_chars:parsed.text.length,source_hash:sourceHash};
   }
   throw new Error('Unsupported file. Use PDF, JSON or CSV.');
 }
 app.post('/api/admin/questions/parse-file',auth,admin,upload.single('file'),async(req,res)=>{
-  try{if(!req.file)return res.status(400).json({error:'No file uploaded.'});const parsed=await parseUploadedFile(req.file);const questions=Array.isArray(parsed)?parsed:(parsed.questions||[]);if(!questions.length)return res.status(422).json({error:'No questions could be detected from this file.',held:parsed.held||[]});const batch=normalizeImportBatch(questions);const validation={total:questions.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length};if(batch.errors.length)return res.status(422).json({ok:false,filename:req.file.originalname,total:questions.length,validation,errors:batch.errors,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}});res.json({ok:true,filename:req.file.originalname,total:batch.normalized.length,validation,questions:batch.normalized,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}})}catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
+  try{
+    if(!req.file)return res.status(400).json({error:'No file uploaded.'});
+    const parsed=await parseUploadedFile(req.file);
+    const questions=parsed.questions||[];
+    const batch=normalizeImportBatch(questions);
+    const hindiOk=batch.normalized.filter(q=>q.metadata?.hindi_status==='ok').length;
+    const hindiMissing=batch.normalized.filter(q=>q.metadata?.hindi_status==='missing').length;
+    const hindiBroken=batch.normalized.filter(q=>q.metadata?.hindi_status==='broken').length;
+    const validation={total:questions.length,ready:batch.normalized.length,invalid:batch.errors.length,held:Number(parsed.held?.length||0),unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length,hindi_ok:hindiOk,hindi_missing:hindiMissing,hindi_broken:hindiBroken};
+    res.json({ok:true,filename:req.file.originalname,total:questions.length,validation,questions:batch.normalized,errors:batch.errors,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null},source_hash:parsed.source_hash||null});
+  }catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
 });
 app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
   try{
