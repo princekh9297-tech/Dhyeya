@@ -36,11 +36,11 @@ app.get('/',async(req,res)=>{
     const u=q.rows[0];
     if(!u||u.status!=='active'){clearAuth(res);return res.sendFile(path.join(__dirname,'public','login.html'));}
     res.set('Cache-Control','no-store');
-    return res.sendFile(path.join(__dirname,'public','index.html'));
+    return res.sendFile(path.join(__dirname,'public',u.role==='admin'?'admin.html':'index.html'));
   }catch{clearAuth(res);return res.sendFile(path.join(__dirname,'public','login.html'));}
 });
 app.get('/admin',auth,admin,(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
-app.get('/student',auth,(req,res)=>{if(req.user.role!=='student' && !(req.user.role==='admin' && String(req.query.admin_view||'')==='1'))return res.redirect('/admin');res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public','index.html'));});
+app.get('/student',auth,(req,res)=>{if(req.user.role!=='student')return res.redirect('/admin');res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public','index.html'));});
 app.get('/index.html',auth,(req,res)=>{if(req.user.role==='admin')return res.redirect('/admin');res.set('Cache-Control','no-store');res.sendFile(path.join(__dirname,'public','index.html'))});
 app.use(express.static(path.join(__dirname,'public'),{index:false,setHeaders:(res,file)=>{if(/\.(html|js)$/.test(file))res.setHeader('Cache-Control','no-store')}}));
 
@@ -71,41 +71,7 @@ app.patch('/api/planner/:id',auth,async(req,res)=>{const {completed,title,subjec
 app.delete('/api/planner/:id',auth,async(req,res)=>{const r=await pool.query('DELETE FROM planner_tasks WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id]);res.json({deleted:r.rowCount===1})});
 
 // Test library + engine
-
-app.get('/api/dashboard',auth,async(req,res)=>{try{
- const u=req.user;
- const a=(await pool.query(`SELECT COUNT(*)::int tests_attempted,COALESCE(ROUND(AVG(score),1),0) average_score,COALESCE(SUM(total_questions),0)::int questions_attempted,COUNT(*) FILTER (WHERE submitted_at>=NOW()-INTERVAL '7 days')::int tests_this_week FROM test_attempts WHERE user_id=$1`,[u.id])).rows[0]||{};
- const streak=(await pool.query(`SELECT COALESCE(streak_days,0)::int streak_days FROM users WHERE id=$1`,[u.id])).rows[0]?.streak_days||0;
- const tests=(await pool.query(`SELECT t.id,t.title,t.institution,t.category,t.year,t.duration_seconds,COUNT(tq.question_id)::int question_count,COALESCE((SELECT ROUND(AVG(a.score),1) FROM test_attempts a WHERE a.user_id=$1 AND a.test_id=t.id),0) avg_score,COALESCE((SELECT COUNT(*) FROM test_attempts a WHERE a.user_id=$1 AND a.test_id=t.id),0)::int attempts FROM tests t LEFT JOIN test_questions tq ON tq.test_id=t.id WHERE t.published=TRUE GROUP BY t.id ORDER BY t.updated_at DESC NULLS LAST,t.title LIMIT 6`,[u.id])).rows;
- const resume=(await pool.query(`SELECT qs.*,t.title,t.duration_seconds FROM quiz_sessions qs JOIN tests t ON t.id=qs.test_id WHERE qs.user_id=$1 AND COALESCE(qs.status,'active')='active' ORDER BY qs.updated_at DESC LIMIT 1`,[u.id])).rows[0]||null;
- if(resume) resume.progress=Math.round(((Number(resume.state?.index||0)+1)/Math.max(1,(await pool.query('SELECT COUNT(*)::int c FROM test_questions WHERE test_id=$1',[resume.test_id])).rows[0].c))*100);
- res.json({user:{id:u.id,name:u.name},summary:{...a,streak_days:streak},tests,resume});
-}catch(e){console.error('dashboard',e);res.status(500).json({error:'Could not load dashboard'})}});
-
-app.get('/api/tests/:id/progress',auth,async(req,res)=>{try{
- const t=(await pool.query(`SELECT t.*,COUNT(tq.question_id)::int live_question_count FROM tests t LEFT JOIN test_questions tq ON tq.test_id=t.id WHERE t.id=$1 GROUP BY t.id`,[req.params.id])).rows[0];
- if(!t)return res.status(404).json({error:'Test not found'});
- const a=(await pool.query(`SELECT COUNT(*)::int attempts,COALESCE(MAX(score),0)::numeric best_score,COALESCE(SUM(total_questions),0)::int attempted_questions FROM test_attempts WHERE user_id=$1 AND test_id=$2`,[req.user.id,t.id])).rows[0];
- const progress=t.live_question_count?Math.min(100,Math.round((Number(a.attempted_questions||0)/Math.max(1,Number(t.live_question_count)))*100)):0;
- res.json({test:{...t,question_count:Number(t.live_question_count||0)},progress:{...a,best_score:Number(a.best_score||0),progress}});
-}catch(e){res.status(500).json({error:'Could not load test details'})}});
-
-app.get('/api/admin/analytics',auth,admin,async(_req,res)=>{try{
- const stats=(await pool.query(`SELECT
- (SELECT COUNT(*) FROM users WHERE role='student') students,
- (SELECT COUNT(*) FROM users WHERE role='student' AND status='active') active_students,
- (SELECT COUNT(*) FROM tests WHERE published=TRUE) published_tests,
- (SELECT COUNT(*) FROM questions) questions,
- (SELECT COUNT(*) FROM test_attempts) attempts,
- (SELECT COALESCE(ROUND(AVG(score),1),0) FROM test_attempts) avg_score,
- (SELECT COUNT(*) FROM support_threads WHERE status='open') open_support,
- (SELECT COUNT(*) FROM question_attempts WHERE is_correct=FALSE) wrong_answers`)).rows[0];
- const popular=(await pool.query(`SELECT t.id,t.title,COUNT(a.id)::int attempts,COALESCE(ROUND(AVG(a.score),1),0) avg_score FROM tests t LEFT JOIN test_attempts a ON a.test_id=t.id GROUP BY t.id ORDER BY attempts DESC,t.title LIMIT 8`)).rows;
- const hard=(await pool.query(`SELECT q.id,q.question_en,q.subject,COUNT(qa.id)::int attempts,SUM(CASE WHEN qa.is_correct=FALSE THEN 1 ELSE 0 END)::int wrong FROM questions q JOIN question_attempts qa ON qa.question_id=q.id GROUP BY q.id,q.question_en,q.subject HAVING COUNT(qa.id)>=3 ORDER BY (SUM(CASE WHEN qa.is_correct=FALSE THEN 1 ELSE 0 END)::numeric/COUNT(qa.id)) DESC LIMIT 8`)).rows;
- res.json({stats,popular,hard});
-}catch(e){res.status(500).json({error:'Could not load admin analytics'})}});
-
-app.get('/api/tests',auth,async(req,res)=>{const p=[];let s=`SELECT t.*,COUNT(tq.question_id)::int AS live_question_count FROM tests t LEFT JOIN test_questions tq ON tq.test_id=t.id WHERE t.published=TRUE`;if(req.query.institution){p.push(req.query.institution);s+=' AND lower(t.institution)=lower($1)'}s+=' GROUP BY t.id ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title';const rows=(await pool.query(s,p)).rows.map(t=>({...t,question_count:Number(t.live_question_count||t.question_count||0)}));res.json({tests:rows})});
+app.get('/api/tests',auth,async(req,res)=>{const p=[];let s='SELECT * FROM tests WHERE published=TRUE';if(req.query.institution){p.push(req.query.institution);s+=' AND lower(institution)=lower($1)'}s+=' ORDER BY COALESCE(year,0) DESC,COALESCE(sequence_no,999999) ASC,title';res.json({tests:(await pool.query(s,p)).rows})});
 app.get('/api/tests/:id/questions',auth,async(req,res)=>{
   const q=await pool.query(`SELECT q.*,t.title test_title,t.duration_seconds FROM test_questions tq JOIN questions q ON q.id=tq.question_id JOIN tests t ON t.id=tq.test_id WHERE tq.test_id=$1 AND t.published=TRUE ORDER BY tq.sort_order`,[req.params.id]);
   const questions=q.rows;
@@ -117,6 +83,35 @@ const xp=Math.min(50,Math.max(10,Math.round(correct*2)));await client.query('INS
 app.get('/api/attempts',auth,async(req,res)=>{res.json({attempts:(await pool.query('SELECT * FROM test_attempts WHERE user_id=$1 ORDER BY submitted_at DESC LIMIT 100',[req.user.id])).rows})});
 app.get('/api/performance',auth,async(req,res)=>{const a=(await pool.query('SELECT * FROM test_attempts WHERE user_id=$1 ORDER BY submitted_at DESC LIMIT 100',[req.user.id])).rows;const qa=(await pool.query(`SELECT q.subject,COUNT(*) total,SUM(CASE WHEN qa.is_correct THEN 1 ELSE 0 END) correct,AVG(qa.time_spent_seconds) avg_time FROM question_attempts qa LEFT JOIN questions q ON q.id=qa.question_id WHERE qa.user_id=$1 GROUP BY q.subject ORDER BY total DESC`,[req.user.id])).rows;res.json({attempts:a,subjects:qa})});
 app.get('/api/revision',auth,async(req,res)=>{const q=await pool.query(`SELECT r.*,q.question_en,q.question_hi,q.subject,q.topic,q.options,q.answer,q.explanation_en,q.explanation_hi FROM revision_items r LEFT JOIN questions q ON q.id=r.question_id WHERE r.user_id=$1 ORDER BY r.next_revision_date NULLS LAST,r.updated_at DESC`,[req.user.id]);res.json({items:q.rows})});
+app.get('/api/dashboard',auth,async(req,res)=>{try{
+  const [attempts,progress,revision,tests]=await Promise.all([
+    pool.query(`SELECT a.*,COALESCE(t.title,a.test_id) test_title FROM test_attempts a LEFT JOIN tests t ON t.id::text=a.test_id WHERE a.user_id=$1 ORDER BY a.submitted_at DESC LIMIT 10`,[req.user.id]),
+    pool.query(`SELECT a.test_id,COALESCE(t.title,a.test_id) test_title,COUNT(*)::int attempts,MAX(a.score)::numeric best_score,MAX(a.submitted_at) last_attempt,MAX(a.total_questions)::int total_questions,MAX(a.correct)::int best_correct FROM test_attempts a LEFT JOIN tests t ON t.id::text=a.test_id WHERE a.user_id=$1 GROUP BY a.test_id,t.title ORDER BY MAX(a.submitted_at) DESC`,[req.user.id]),
+    pool.query(`SELECT COUNT(*)::int count,COUNT(*) FILTER (WHERE next_revision_date<=CURRENT_DATE OR next_revision_date IS NULL)::int due FROM revision_items WHERE user_id=$1 AND revision_status='needs_revision'`,[req.user.id]),
+    pool.query(`SELECT t.id,t.title,t.institution,t.category,t.year,t.duration_seconds,t.question_count,t.published,COALESCE((SELECT COUNT(*)::int FROM test_questions tq WHERE tq.test_id=t.id),0) mapped_count FROM tests t WHERE t.published=TRUE ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title LIMIT 50`)
+  ]);
+  const totalAttempts=progress.rows.reduce((n,x)=>n+Number(x.attempts||0),0);
+  const totalQuestions=attempts.rows.reduce((n,x)=>n+Number(x.total_questions||0),0);
+  const correct=attempts.rows.reduce((n,x)=>n+Number(x.correct||0),0);
+  const avgScore=attempts.rows.length?Number((attempts.rows.reduce((n,x)=>n+Number(x.score||0),0)/attempts.rows.length).toFixed(2)):0;
+  const bestScore=attempts.rows.length?Math.max(...attempts.rows.map(x=>Number(x.score||0))):0;
+  res.json({summary:{attempts:totalAttempts,questions:totalQuestions,accuracy:totalQuestions?Number((correct/totalQuestions*100).toFixed(1)):0,avg_score:avgScore,best_score:bestScore,revision_due:Number(revision.rows[0]?.due||0),revision_total:Number(revision.rows[0]?.count||0)},attempts:attempts.rows,progress:progress.rows,tests:tests.rows});
+}catch(e){res.status(500).json({error:'Dashboard data unavailable'})}});
+
+app.post('/api/revision/practice',auth,async(req,res)=>{try{
+  const rows=(await pool.query(`SELECT q.* FROM revision_items r JOIN questions q ON q.id=r.question_id WHERE r.user_id=$1 AND r.revision_status='needs_revision' ORDER BY r.next_revision_date NULLS LAST,r.updated_at DESC LIMIT 50`,[req.user.id])).rows;
+  if(!rows.length)return res.status(404).json({error:'No revision questions available.'});
+  res.json({questions:rows});
+}catch(e){res.status(500).json({error:'Could not start revision practice.'})}});
+
+app.get('/api/support/tickets',auth,async(req,res)=>{try{
+  const q=await pool.query(`SELECT t.id,t.subject,t.status,t.priority,t.created_at,t.updated_at,(SELECT COUNT(*)::int FROM support_messages m WHERE m.ticket_id=t.id) message_count,(SELECT message FROM support_messages m WHERE m.ticket_id=t.id ORDER BY m.created_at DESC LIMIT 1) last_message FROM support_tickets t WHERE t.user_id=$1 ORDER BY t.updated_at DESC`,[req.user.id]);
+  res.json({tickets:q.rows});
+}catch(e){res.status(500).json({error:'Support inbox unavailable'})}});
+app.get('/api/support/tickets/:id',auth,async(req,res)=>{const t=(await pool.query(`SELECT * FROM support_tickets WHERE id=$1 AND user_id=$2`,[req.params.id,req.user.id])).rows[0];if(!t)return res.status(404).json({error:'Ticket not found'});const m=(await pool.query(`SELECT m.*,u.name sender_name FROM support_messages m JOIN users u ON u.id=m.sender_user_id WHERE m.ticket_id=$1 ORDER BY m.created_at ASC`,[t.id])).rows;res.json({ticket:t,messages:m})});
+app.post('/api/support/tickets',auth,async(req,res)=>{const subject=String(req.body?.subject||'').trim(),message=String(req.body?.message||'').trim();if(!subject||!message)return res.status(400).json({error:'Subject and message are required'});const c=await pool.connect();try{await c.query('BEGIN');const t=(await c.query(`INSERT INTO support_tickets(user_id,subject,priority) VALUES($1,$2,$3) RETURNING *`,[req.user.id,subject,['low','normal','high'].includes(req.body?.priority)?req.body.priority:'normal'])).rows[0];await c.query(`INSERT INTO support_messages(ticket_id,sender_user_id,sender_role,message) VALUES($1,$2,'student',$3)`,[t.id,req.user.id,message]);await c.query('COMMIT');await audit(req.user,'support_ticket_create',req.user.id,{ticket_id:t.id});res.status(201).json({ticket:t});}catch(e){await c.query('ROLLBACK');res.status(400).json({error:'Could not create support ticket.'})}finally{c.release()}});
+app.post('/api/support/tickets/:id/messages',auth,async(req,res)=>{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'Message is required'});const c=await pool.connect();try{await c.query('BEGIN');const t=(await c.query(`SELECT * FROM support_tickets WHERE id=$1 AND user_id=$2 FOR UPDATE`,[req.params.id,req.user.id])).rows[0];if(!t){await c.query('ROLLBACK');return res.status(404).json({error:'Ticket not found'})}if(t.status==='closed')await c.query(`UPDATE support_tickets SET status='open',updated_at=NOW() WHERE id=$1`,[t.id]);await c.query(`INSERT INTO support_messages(ticket_id,sender_user_id,sender_role,message) VALUES($1,$2,'student',$3)`,[t.id,req.user.id,message]);await c.query(`UPDATE support_tickets SET updated_at=NOW() WHERE id=$1`,[t.id]);await c.query('COMMIT');res.json({ok:true});}catch(e){await c.query('ROLLBACK');res.status(400).json({error:'Could not send message.'})}finally{c.release()}});
+
 app.get('/api/xp',auth,async(req,res)=>{res.json({xp:req.user.xp,level:req.user.level,ledger:(await pool.query('SELECT * FROM xp_ledger WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.id])).rows})});
 app.get('/api/leaderboard',auth,async(req,res)=>{res.json({leaders:(await pool.query(`SELECT id,student_code,name,username,xp,level,streak_days FROM users WHERE role='student' AND status='active' ORDER BY xp DESC,level DESC,created_at ASC LIMIT 100`)).rows})});
 
@@ -289,20 +284,10 @@ function splitPdfBlocks(text){
   const cleaned=String(text||'').replace(/\u00a0/g,' ').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n');
   return cleaned.split(/\n\s*(?=(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s+)/i).map(x=>x.trim()).filter(Boolean);
 }
-function hasHindi(s){return /[\u0900-\u097F]/.test(String(s||''));}
-function hindiIntegrity(s){
-  const v=String(s||'');
-  if(!v) return {status:'missing',label:'Hindi missing'};
-  if(v.includes('\uFFFD')) return {status:'broken',label:'Replacement character'};
-  if(looksLikeMojibake(v)) return {status:'broken',label:'Possible mojibake'};
-  if(!hasHindi(v)) return {status:'missing',label:'Hindi missing'};
-  return {status:'ok',label:'Hindi OK'};
-}
-function parsePdfQuestionBlock(block,index,sourceHash){
-  let s=String(block||'').replace(/\u0000/g,'').trim();
-  s=s.replace(/^(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s*/i,'').trim();
+function parsePdfQuestionBlock(block,index){
+  let s=block.replace(/^(?:Q(?:uestion)?\s*)?\d{1,4}[.)]\s*/i,'').trim();
   const answerMatch=s.match(/(?:^|\n)\s*(?:answer|ans|correct\s*answer)\s*[:\-]?\s*([ABCDE])\b/i);
-  const explanationMatch=s.match(/(?:^|\n)\s*(?:explanation|solution|exp)\s*[:\-]?\s*([\s\S]+)$/i);
+  const explanationMatch=s.match(/(?:^|\n)\s*(?:explanation|solution)\s*[:\-]?\s*([\s\S]+)$/i);
   const answer=answerMatch?answerMatch[1].toUpperCase():null;
   if(answerMatch)s=s.slice(0,answerMatch.index).trim();
   let explanation=explanationMatch?explanationMatch[1].trim():null;
@@ -317,37 +302,22 @@ function parsePdfQuestionBlock(block,index,sourceHash){
   else if(/assertion\s*[:\-]|reason\s*[:\-]|assertion\s*\(a\).*reason\s*\(r\)/is.test(stem))question_type='assertion_reason';
   else if(/statement\s*[i1]|following\s+statements|which\s+of\s+the\s+statements/i.test(stem))question_type='statement';
   else if(/chronolog|arrange.*order|sequence/i.test(stem))question_type='sequence';
-  const qbi=splitImportedBilingual(stem); const exi=splitImportedBilingual(explanation||'');
-  const combined=[qbi.en,qbi.hi||'',...options,exi.en||'',exi.hi||''].join('\n');
-  const hindi=hindiIntegrity(qbi.hi||options.join('\n')||exi.hi||'');
-  const metadata={import_parser:'pdf-text',question_type,parse_confidence:answer?'high':'review',hindi_status:hindi.status,hindi_label:hindi.label,source_block:index};
-  if(hindi.status==='broken')metadata.parse_confidence='review';
-  const id=`PDF-${sourceHash.slice(0,12)}-${String(index).padStart(5,'0')}`;
-  return {id,question_en:qbi.en,question_hi:qbi.hi||null,options:options.map(cleanImportedField),answer,explanation_en:exi.en||null,explanation_hi:exi.hi||null,source:'Admin PDF Import',metadata};
+  const metadata={import_parser:'pdf-text',question_type,parse_confidence:answer?'high':'review'};
+  const qbi=splitImportedBilingual(stem); const exi=splitImportedBilingual(explanation||''); if(qbi.en.includes('�')||exi.en.includes('�')) metadata.parse_confidence='review'; return {id:`PDF-${Date.now().toString(36)}-${index}-${crypto.randomBytes(3).toString('hex')}`,question_en:qbi.en,question_hi:qbi.hi||null,options:options.map(cleanImportedField),answer,explanation_en:exi.en||null,explanation_hi:exi.hi||null,source:'Admin PDF Import',metadata};
 }
 async function parseUploadedFile(file){
   const name=String(file.originalname||'').toLowerCase();
-  if(name.endsWith('.json')){const data=JSON.parse(file.buffer.toString('utf8'));return {questions:Array.isArray(data)?data:(Array.isArray(data.questions)?data.questions:[]),held:[]}}
-  if(name.endsWith('.csv'))return {questions:csvRows(file.buffer.toString('utf8')),held:[]};
+  if(name.endsWith('.json')){const data=JSON.parse(file.buffer.toString('utf8'));return Array.isArray(data)?data:(Array.isArray(data.questions)?data.questions:[])}
+  if(name.endsWith('.csv'))return csvRows(file.buffer.toString('utf8'));
   if(name.endsWith('.pdf')){
-    const parsed=await pdfParse(file.buffer); const blocks=splitPdfBlocks(parsed.text); const out=[]; const held=[]; const sourceHash=crypto.createHash('sha256').update(file.buffer).digest('hex');
-    blocks.forEach((b,i)=>{try{const q=parsePdfQuestionBlock(b,i+1,sourceHash);if(!q)held.push({index:i+1,reason:'Could not detect question/options/answer structure',raw:b.slice(0,2000)});else out.push(q)}catch(e){held.push({index:i+1,reason:e.message||'Parser error',raw:b.slice(0,2000)})}});
-    return {questions:out,held,total_blocks:blocks.length,pages:parsed.numpages,text_chars:parsed.text.length,source_hash:sourceHash};
+    const parsed=await pdfParse(file.buffer); const blocks=splitPdfBlocks(parsed.text); const out=[]; const held=[];
+    blocks.forEach((b,i)=>{const q=parsePdfQuestionBlock(b,i+1);if(q)out.push(q);else held.push({index:i+1,raw:b.slice(0,2000)})});
+    return {questions:out,held,total_blocks:blocks.length,pages:parsed.numpages,text_chars:parsed.text.length};
   }
   throw new Error('Unsupported file. Use PDF, JSON or CSV.');
 }
 app.post('/api/admin/questions/parse-file',auth,admin,upload.single('file'),async(req,res)=>{
-  try{
-    if(!req.file)return res.status(400).json({error:'No file uploaded.'});
-    const parsed=await parseUploadedFile(req.file);
-    const questions=parsed.questions||[];
-    const batch=normalizeImportBatch(questions);
-    const hindiOk=batch.normalized.filter(q=>q.metadata?.hindi_status==='ok').length;
-    const hindiMissing=batch.normalized.filter(q=>q.metadata?.hindi_status==='missing').length;
-    const hindiBroken=batch.normalized.filter(q=>q.metadata?.hindi_status==='broken').length;
-    const validation={total:questions.length,ready:batch.normalized.length,invalid:batch.errors.length,held:Number(parsed.held?.length||0),unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length,hindi_ok:hindiOk,hindi_missing:hindiMissing,hindi_broken:hindiBroken};
-    res.json({ok:true,filename:req.file.originalname,total:questions.length,validation,questions:batch.normalized,errors:batch.errors,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null},source_hash:parsed.source_hash||null});
-  }catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
+  try{if(!req.file)return res.status(400).json({error:'No file uploaded.'});const parsed=await parseUploadedFile(req.file);const questions=Array.isArray(parsed)?parsed:(parsed.questions||[]);if(!questions.length)return res.status(422).json({error:'No questions could be detected from this file.',held:parsed.held||[]});const batch=normalizeImportBatch(questions);const validation={total:questions.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length};if(batch.errors.length)return res.status(422).json({ok:false,filename:req.file.originalname,total:questions.length,validation,errors:batch.errors,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}});res.json({ok:true,filename:req.file.originalname,total:batch.normalized.length,validation,questions:batch.normalized,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}})}catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
 });
 app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
   try{
@@ -416,11 +386,12 @@ app.delete('/api/admin/questions/:id',auth,admin,async(req,res)=>{
 app.post('/api/admin/questions/bulk-delete',auth,admin,async(req,res)=>{
   const ids=Array.isArray(req.body?.ids)?[...new Set(req.body.ids.map(String).filter(Boolean))]:[];
   if(!ids.length)return res.status(400).json({error:'No question IDs supplied.'});
-  if(ids.length>50000)return res.status(400).json({error:'Maximum 50,000 questions per bulk operation.'});
+  if(ids.length>50000)return res.status(400).json({error:'Maximum 50,000 questions per bulk delete.'});
   const client=await pool.connect();
   try{await client.query('BEGIN');const r=await client.query('DELETE FROM questions WHERE id = ANY($1::text[]) RETURNING id',[ids]);await client.query('COMMIT');await audit(req.user,'question_bank_bulk_delete',null,{requested:ids.length,deleted:r.rowCount});res.json({ok:true,deleted:r.rowCount,requested:ids.length});}
   catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Bulk delete failed.'})}finally{client.release()}
 });
+app.delete('/api/admin/tests/:id',auth,admin,async(req,res)=>{const testId=String(req.params.id),deleteUnused=!!req.body?.delete_unused_questions;const client=await pool.connect();try{await client.query('BEGIN');const t=(await client.query('SELECT id,title FROM tests WHERE id=$1 FOR UPDATE',[testId])).rows[0];if(!t){await client.query('ROLLBACK');return res.status(404).json({error:'Test not found'})}let removed=0;if(deleteUnused){const ids=(await client.query('SELECT question_id FROM test_questions WHERE test_id=$1',[testId])).rows.map(x=>x.question_id);if(ids.length){const r=await client.query(`DELETE FROM questions q WHERE q.id=ANY($1::text[]) AND NOT EXISTS (SELECT 1 FROM test_questions tq WHERE tq.question_id=q.id AND tq.test_id<>$2) RETURNING q.id`,[ids,testId]);removed=r.rowCount}}await client.query('DELETE FROM tests WHERE id=$1',[testId]);await client.query('COMMIT');await audit(req.user,'test_delete',null,{test_id:testId,test_title:t.title,unused_questions_deleted:removed});res.json({ok:true,deleted_test:testId,unused_questions_deleted:removed});}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Could not delete test.'})}finally{client.release()}});
 app.delete('/api/admin/tests/:id/questions',auth,admin,async(req,res)=>{
   const testId=String(req.params.id); const client=await pool.connect();
   try{await client.query('BEGIN');const t=(await client.query('SELECT id,title FROM tests WHERE id=$1 FOR UPDATE',[testId])).rows[0];if(!t){await client.query('ROLLBACK');return res.status(404).json({error:'Test not found'})}
@@ -429,97 +400,17 @@ app.delete('/api/admin/tests/:id/questions',auth,admin,async(req,res)=>{
   }catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Could not clear test questions.'})}finally{client.release()}
 });
 
-// Student ↔ Admin support messaging
-app.get('/api/support',auth,async(req,res)=>{
-  try{
-    const t=(await pool.query(`SELECT id,subject,status,created_at,updated_at,last_message_at FROM support_threads WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 1`,[req.user.id])).rows[0];
-    if(!t)return res.json({thread:null,messages:[]});
-    const m=(await pool.query(`SELECT id,sender_id,sender_role,message,created_at,read_at FROM support_messages WHERE thread_id=$1 ORDER BY created_at ASC LIMIT 300`,[t.id])).rows;
-    if(req.user.role==='student') await pool.query(`UPDATE support_messages SET read_at=COALESCE(read_at,NOW()) WHERE thread_id=$1 AND sender_role='admin' AND read_at IS NULL`,[t.id]);
-    res.json({thread:t,messages:m});
-  }catch(e){res.status(500).json({error:'Could not load support messages.'})}
-});
-app.post('/api/support/messages',auth,async(req,res)=>{
-  const message=String(req.body?.message||'').trim();
-  const subject=String(req.body?.subject||'General Support').trim().slice(0,160)||'General Support';
-  if(!message)return res.status(400).json({error:'Message cannot be empty.'});
-  if(message.length>5000)return res.status(400).json({error:'Message is too long. Maximum 5,000 characters.'});
-  const client=await pool.connect();
-  try{
-    await client.query('BEGIN');
-    let t=(await client.query(`SELECT * FROM support_threads WHERE user_id=$1 FOR UPDATE`,[req.user.id])).rows[0];
-    if(!t){t=(await client.query(`INSERT INTO support_threads(user_id,subject,status,last_message_at) VALUES($1,$2,'open',NOW()) RETURNING *`,[req.user.id,subject])).rows[0]}
-    else if(t.status==='closed') t=(await client.query(`UPDATE support_threads SET status='open',subject=$2,updated_at=NOW(),last_message_at=NOW() WHERE id=$1 RETURNING *`,[t.id,subject])).rows[0];
-    else t=(await client.query(`UPDATE support_threads SET subject=COALESCE(NULLIF($2,''),subject),updated_at=NOW(),last_message_at=NOW() WHERE id=$1 RETURNING *`,[t.id,subject])).rows[0];
-    const m=(await client.query(`INSERT INTO support_messages(thread_id,sender_id,sender_role,message) VALUES($1,$2,'student',$3) RETURNING *`,[t.id,req.user.id,message])).rows[0];
-    await client.query('COMMIT');
-    await audit(req.user,'support_message_sent',req.user.id,{thread_id:t.id});
-    res.status(201).json({thread:t,message:m});
-  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:'Could not send message.'})}finally{client.release()}
-});
-app.get('/api/admin/support',auth,admin,async(req,res)=>{
-  const status=req.query.status;
-  const p=[]; let where='';
-  if(status&&['open','closed'].includes(status)){p.push(status);where=`WHERE t.status=$1`}
-  const q=await pool.query(`SELECT t.id,t.user_id,t.subject,t.status,t.created_at,t.updated_at,t.last_message_at,u.name,u.student_code,u.email,(SELECT COUNT(*) FROM support_messages sm WHERE sm.thread_id=t.id AND sm.sender_role='student' AND sm.read_at IS NULL)::int unread FROM support_threads t JOIN users u ON u.id=t.user_id ${where} ORDER BY t.last_message_at DESC NULLS LAST LIMIT 500`,p);
-  res.json({threads:q.rows});
-});
-app.get('/api/admin/support/:id',auth,admin,async(req,res)=>{
-  const t=(await pool.query(`SELECT t.*,u.name,u.student_code,u.email FROM support_threads t JOIN users u ON u.id=t.user_id WHERE t.id=$1`,[req.params.id])).rows[0];
-  if(!t)return res.status(404).json({error:'Support thread not found.'});
-  const m=(await pool.query(`SELECT id,sender_id,sender_role,message,created_at,read_at FROM support_messages WHERE thread_id=$1 ORDER BY created_at ASC LIMIT 500`,[t.id])).rows;
-  await pool.query(`UPDATE support_messages SET read_at=COALESCE(read_at,NOW()) WHERE thread_id=$1 AND sender_role='student' AND read_at IS NULL`,[t.id]);
-  res.json({thread:t,messages:m});
-});
-app.post('/api/admin/support/:id/messages',auth,admin,async(req,res)=>{
-  const message=String(req.body?.message||'').trim();
-  if(!message)return res.status(400).json({error:'Message cannot be empty.'});
-  if(message.length>5000)return res.status(400).json({error:'Message is too long. Maximum 5,000 characters.'});
-  const client=await pool.connect();
-  try{
-    await client.query('BEGIN');
-    const t=(await client.query(`SELECT * FROM support_threads WHERE id=$1 FOR UPDATE`,[req.params.id])).rows[0];
-    if(!t){await client.query('ROLLBACK');return res.status(404).json({error:'Support thread not found.'})}
-    const m=(await client.query(`INSERT INTO support_messages(thread_id,sender_id,sender_role,message) VALUES($1,$2,'admin',$3) RETURNING *`,[t.id,req.user.id,message])).rows[0];
-    await client.query(`UPDATE support_threads SET status='open',updated_at=NOW(),last_message_at=NOW() WHERE id=$1`,[t.id]);
-    await client.query('COMMIT');
-    await audit(req.user,'support_admin_reply',t.user_id,{thread_id:t.id});
-    res.status(201).json({message:m});
-  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:'Could not send reply.'})}finally{client.release()}
-});
-app.patch('/api/admin/support/:id',auth,admin,async(req,res)=>{
-  const status=req.body?.status;
-  if(!['open','closed'].includes(status))return res.status(400).json({error:'Invalid support status.'});
-  const q=await pool.query(`UPDATE support_threads SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *`,[status,req.params.id]);
-  if(!q.rows[0])return res.status(404).json({error:'Support thread not found.'});
-  await audit(req.user,'support_status_change',q.rows[0].user_id,{thread_id:req.params.id,status});
-  res.json({thread:q.rows[0]});
-});
-app.patch('/api/admin/tests/:id',auth,admin,async(req,res)=>{try{const b=req.body||{};if(typeof b.published!=='boolean')return res.status(400).json({error:'published must be boolean'});const q=await pool.query('UPDATE tests SET published=$1,updated_at=NOW() WHERE id=$2 RETURNING *',[b.published,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Test/section not found.'});await audit(req.user,b.published?'publish_test':'unpublish_test',req.params.id,{title:q.rows[0].title});res.json({test:q.rows[0]})}catch(e){res.status(400).json({error:e.message||'Could not update test.'})}});
-app.delete('/api/admin/tests/:id',auth,admin,async(req,res)=>{
-  const testId=String(req.params.id); const deleteQuestions=req.query.delete_questions==='true'; const client=await pool.connect();
-  try{
-    await client.query('BEGIN');
-    const t=(await client.query('SELECT id,title FROM tests WHERE id=$1 FOR UPDATE',[testId])).rows[0];
-    if(!t){await client.query('ROLLBACK');return res.status(404).json({error:'Test/section not found.'})}
-    const qids=(await client.query('SELECT question_id FROM test_questions WHERE test_id=$1',[testId])).rows.map(r=>r.question_id);
-    await client.query('DELETE FROM test_questions WHERE test_id=$1',[testId]);
-    let deletedQuestions=0;
-    if(deleteQuestions && qids.length){
-      const r=await client.query(`DELETE FROM questions q WHERE q.id=ANY($1::text[]) AND NOT EXISTS (SELECT 1 FROM test_questions tq WHERE tq.question_id=q.id) RETURNING q.id`,[qids]);
-      deletedQuestions=r.rowCount;
-    }
-    await client.query('DELETE FROM tests WHERE id=$1',[testId]);
-    await client.query('COMMIT');
-    await audit(req.user,'test_section_delete',null,{test_id:testId,test_title:t.title,mappings_removed:qids.length,questions_deleted:deletedQuestions,delete_questions:deleteQuestions});
-    res.json({ok:true,test_id:testId,title:t.title,mappings_removed:qids.length,questions_deleted:deletedQuestions});
-  }catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message||'Could not delete section.'})}finally{client.release()}
-});
-
-
-// Admin
-app.get('/api/admin/stats'
-,auth,admin,async(_req,res)=>{const q=await pool.query(`SELECT (SELECT COUNT(*) FROM users WHERE role='student') users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='active') active_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='blocked') blocked_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='deactivated') deactivated_users,(SELECT COUNT(*) FROM tests) tests,(SELECT COUNT(*) FROM questions) questions,(SELECT COUNT(*) FROM test_attempts) attempts,(SELECT COALESCE(SUM(xp_amount),0) FROM xp_ledger) xp_awarded,(SELECT COUNT(*) FROM planner_tasks WHERE completed=FALSE) open_tasks`);res.json({stats:q.rows[0]})});
+// Admin analytics and support
+app.get('/api/admin/analytics',auth,admin,async(_req,res)=>{try{const [kpi,top,difficult]=await Promise.all([
+ pool.query(`SELECT (SELECT COUNT(*) FROM users WHERE role='student') students,(SELECT COUNT(*) FROM tests WHERE published=TRUE) published_tests,(SELECT COUNT(*) FROM questions) questions,(SELECT COUNT(*) FROM test_attempts) attempts,(SELECT COALESCE(ROUND(AVG(score),2),0) FROM test_attempts) average_score,(SELECT COUNT(*) FROM support_tickets WHERE status='open') open_support_tickets`),
+ pool.query(`SELECT a.test_id,COALESCE(t.title,a.test_id) title,COUNT(*)::int attempts,ROUND(AVG(a.score),2)::numeric average_score,ROUND(MAX(a.score),2)::numeric best_score FROM test_attempts a LEFT JOIN tests t ON t.id::text=a.test_id GROUP BY a.test_id,t.title ORDER BY COUNT(*) DESC LIMIT 10`),
+ pool.query(`SELECT q.id,q.subject,q.topic,COUNT(qa.*)::int attempts,ROUND(100*AVG(CASE WHEN qa.is_correct THEN 1 ELSE 0 END),1)::numeric accuracy,ROUND(AVG(qa.time_spent_seconds),1)::numeric avg_time FROM question_attempts qa JOIN questions q ON q.id=qa.question_id GROUP BY q.id,q.subject,q.topic HAVING COUNT(qa.*)>=2 ORDER BY AVG(CASE WHEN qa.is_correct THEN 1 ELSE 0 END) ASC,COUNT(qa.*) DESC LIMIT 20`)
+]);res.json({kpis:kpi.rows[0],most_attempted_tests:top.rows,difficult_questions:difficult.rows});}catch(e){res.status(500).json({error:'Admin analytics unavailable'})}});
+app.get('/api/admin/support/tickets',auth,admin,async(_req,res)=>{const q=await pool.query(`SELECT t.*,u.name,u.student_code,u.email,(SELECT COUNT(*)::int FROM support_messages m WHERE m.ticket_id=t.id) message_count,(SELECT message FROM support_messages m WHERE m.ticket_id=t.id ORDER BY m.created_at DESC LIMIT 1) last_message FROM support_tickets t JOIN users u ON u.id=t.user_id ORDER BY CASE WHEN t.status='open' THEN 0 ELSE 1 END,t.updated_at DESC LIMIT 500`);res.json({tickets:q.rows})});
+app.get('/api/admin/support/tickets/:id',auth,admin,async(req,res)=>{const t=(await pool.query(`SELECT t.*,u.name,u.student_code FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=$1`,[req.params.id])).rows[0];if(!t)return res.status(404).json({error:'Ticket not found'});const m=(await pool.query(`SELECT m.*,u.name sender_name FROM support_messages m JOIN users u ON u.id=m.sender_user_id WHERE m.ticket_id=$1 ORDER BY m.created_at ASC`,[t.id])).rows;res.json({ticket:t,messages:m})});
+app.post('/api/admin/support/tickets/:id/messages',auth,admin,async(req,res)=>{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'Message is required'});const c=await pool.connect();try{await c.query('BEGIN');const t=(await c.query('SELECT id FROM support_tickets WHERE id=$1 FOR UPDATE',[req.params.id])).rows[0];if(!t){await c.query('ROLLBACK');return res.status(404).json({error:'Ticket not found'})}await c.query(`INSERT INTO support_messages(ticket_id,sender_user_id,sender_role,message) VALUES($1,$2,'admin',$3)`,[t.id,req.user.id,message]);await c.query(`UPDATE support_tickets SET status='open',updated_at=NOW() WHERE id=$1`,[t.id]);await c.query('COMMIT');res.json({ok:true});}catch(e){await c.query('ROLLBACK');res.status(400).json({error:'Could not send reply.'})}finally{c.release()}});
+app.patch('/api/admin/support/tickets/:id',auth,admin,async(req,res)=>{const status=req.body?.status;if(!['open','closed'].includes(status))return res.status(400).json({error:'Invalid status'});const q=await pool.query(`UPDATE support_tickets SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *`,[status,req.params.id]);if(!q.rows[0])return res.status(404).json({error:'Ticket not found'});res.json({ticket:q.rows[0]})});
+app.get('/api/admin/stats',auth,admin,async(_req,res)=>{const q=await pool.query(`SELECT (SELECT COUNT(*) FROM users WHERE role='student') users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='active') active_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='blocked') blocked_users,(SELECT COUNT(*) FROM users WHERE role='student' AND status='deactivated') deactivated_users,(SELECT COUNT(*) FROM tests) tests,(SELECT COUNT(*) FROM questions) questions,(SELECT COUNT(*) FROM test_attempts) attempts,(SELECT COALESCE(SUM(xp_amount),0) FROM xp_ledger) xp_awarded,(SELECT COUNT(*) FROM planner_tasks WHERE completed=FALSE) open_tasks`);res.json({stats:q.rows[0]})});
 app.get('/api/admin/users',auth,admin,async(req,res)=>{const search=(req.query.search||'').trim();const status=req.query.status;const p=[];let s="SELECT id,student_code,email,name,username,role,status,target_exam,xp,level,streak_days,last_login_at,created_at FROM users WHERE role='student'";if(search){p.push('%'+search.toLowerCase()+'%');s+=` AND (lower(coalesce(name,'')) LIKE $${p.length} OR lower(coalesce(email,'')) LIKE $${p.length} OR lower(coalesce(username,'')) LIKE $${p.length} OR lower(coalesce(student_code,'')) LIKE $${p.length})`}if(status){p.push(status);s+=` AND status=$${p.length}`}s+=' ORDER BY created_at DESC LIMIT 500';res.json({users:(await pool.query(s,p)).rows})});
 app.get('/api/admin/users/:id/activity',auth,admin,async(req,res)=>{const u=(await pool.query("SELECT id,student_code,email,name,username,status,last_login_at,created_at FROM users WHERE id=$1 AND role='student'",[req.params.id])).rows[0];if(!u)return res.status(404).json({error:'Student not found'});const logs=(await pool.query('SELECT action,details,created_at FROM audit_logs WHERE target_user_id=$1 ORDER BY created_at DESC LIMIT 500',[req.params.id])).rows;const attempts=(await pool.query('SELECT id,test_id,mode,score,total_questions,accuracy,submitted_at FROM test_attempts WHERE user_id=$1 ORDER BY submitted_at DESC LIMIT 100',[req.params.id])).rows;const battles=(await pool.query('SELECT id,status,subject,question_count,started_at,finished_at,winner_id FROM battle_rooms WHERE creator_id=$1 OR accepted_by=$1 ORDER BY created_at DESC LIMIT 100',[req.params.id])).rows;res.json({user:u,activity:logs,attempts,battles})});
 app.post('/api/admin/users',auth,admin,async(req,res)=>{const b=req.body||{};const name=(b.name||'New Student').trim();const email=b.email?.trim().toLowerCase()||null;const username=b.username?.trim()||null;const password=b.password?.trim()||makePassword();const code=b.student_code?.trim()||makeStudentCode();if(password.length<8)return res.status(400).json({error:'Password must be at least 8 characters'});try{const hash=await bcrypt.hash(password,12);const q=await pool.query(`INSERT INTO users(student_code,email,password_hash,name,username,target_exam,daily_target,role,status) VALUES($1,$2,$3,$4,$5,$6,$7,'student','active') RETURNING *`,[code,email,hash,name,username,b.target_exam||'BPSC Prelims',Number(b.daily_target||100)]);await audit(req.user,'create_student',q.rows[0].id,{student_code:code});res.status(201).json({user:publicUser(q.rows[0]),credentials:{student_code:code,username:username||null,email,password}})}catch(e){res.status(409).json({error:e.code==='23505'?'Student ID, email or username already exists':'Could not create student'})}});
@@ -590,29 +481,6 @@ async function initializeDatabase(){
   const addColumn = async (table, column, definition) => {
     await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
   };
-
-  // Support messaging: one student thread with bidirectional messages.
-  await pool.query(`CREATE TABLE IF NOT EXISTS support_threads (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    subject TEXT NOT NULL DEFAULT 'General Support',
-    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
-    last_message_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )`);
-  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_support_thread_user ON support_threads(user_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_threads_status_time ON support_threads(status,last_message_at DESC)`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS support_messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    thread_id UUID NOT NULL REFERENCES support_threads(id) ON DELETE CASCADE,
-    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    sender_role TEXT NOT NULL CHECK (sender_role IN ('student','admin')),
-    message TEXT NOT NULL,
-    read_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_thread_time ON support_messages(thread_id,created_at ASC)`);
 
   // Notifications compatibility. This fixes legacy databases where the
   // notifications table existed before type/link/created_by were introduced.
@@ -695,6 +563,21 @@ async function initializeDatabase(){
   if (await hasColumn('battle_answers','battle_id') && await hasColumn('battle_answers','question_id')) {
     await pool.query('CREATE INDEX IF NOT EXISTS idx_battle_answers_room ON battle_answers(battle_id,question_id)');
   }
+  // Support messaging schema (safe for existing production databases).
+  await pool.query(`CREATE TABLE IF NOT EXISTS support_tickets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS support_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), ticket_id UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+    sender_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, sender_role TEXT NOT NULL CHECK (sender_role IN ('student','admin')),
+    message TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_support_tickets_user_status ON support_tickets(user_id,status,updated_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id,created_at ASC)');
+
   console.log('Database schema initialized/verified');
 }
 app.listen(port,async()=>{
