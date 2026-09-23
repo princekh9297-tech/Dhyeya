@@ -1035,6 +1035,9 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 #quiz .nav-legend .dot.current{background:var(--dh-accent,var(--gold))}
 #quiz .nav-legend .dot.empty{width:8px;height:8px;background:#98a2b3;border:0}
 #quiz .nav-legend .dot.review{background:#d94b4b}
+#quiz .nav-legend .dot.answered{background:#16845b}
+#quiz .nav-legend .dot.current{background:var(--dh-accent,var(--gold))}
+#quiz .nav-legend .dot.empty{background:#98a2b3;border:0}
 #quiz .qdot.review{background:color-mix(in srgb,#d94b4b 14%,var(--card));color:#c63f3f;border-color:color-mix(in srgb,#d94b4b 35%,var(--line))}
 #quiz .qdot.current{background:var(--dh-accent,var(--gold));color:#fff;border-color:var(--dh-accent,var(--gold));box-shadow:0 0 0 2px color-mix(in srgb,var(--dh-accent,var(--gold)) 22%,transparent)}
 #quiz .nav-legend .dot.review{background:#d94b4b}
@@ -1108,7 +1111,7 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
   #quiz .quiz-actions-row>.btn:last-child{margin-left:0;}
 }
 @media(min-width:901px){#quiz .quizNavBtn{display:none}}
-/* V4.2.2 — iPad/tablet CBT navigator is a drawer in both orientations. */
+/* V4.2.3 — iPad/tablet CBT navigator is a drawer in both orientations. */
 .qtop-left{display:flex;align-items:center;gap:10px;min-width:0}
 .quizNavBtnTop{display:none;height:34px;padding:0 10px;border-radius:9px;font-size:11px;white-space:nowrap}
 @media (max-width:1180px) and (pointer:coarse){
@@ -1123,6 +1126,25 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 }
 @media (max-width:600px){#quiz .quizNavBtnTop{font-size:10px;padding:0 9px;height:32px}}
 @media(max-width:380px){#quiz .pq-actions #quizModePill{display:none}#quiz .pq-title h1{max-width:155px}}
+/* V4.2.3 — quiz quality / Unicode / iPad controls */
+#quiz .question-hi{margin-top:8px;font-size:clamp(15px,1.6vw,19px);line-height:1.65;color:var(--dh-text);font-weight:600}
+#quiz .statement-hi{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);font-size:.95em;line-height:1.65;color:var(--dh-muted)}
+#quiz .practice-feedback .ex-en{margin-top:10px}
+#quiz .practice-feedback .ex-hi{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);line-height:1.75;font-weight:500}
+#quiz .practice-feedback b:first-child{font-weight:800;letter-spacing:.01em}
+@media(max-width:900px){
+  #quiz .quiz-actions-row{display:grid!important;grid-template-columns:1fr 1fr!important;gap:8px!important;align-items:stretch!important;padding:10px 12px!important}
+  #quiz .quiz-actions-row>.btn,#quiz .quiz-action-cluster .btn{min-height:44px!important;width:100%!important;min-width:0!important;padding:0 8px!important;white-space:nowrap!important;font-size:12px!important}
+  #quiz .quiz-actions-row>.btn:first-child{grid-column:1}
+  #quiz .quiz-actions-row>.btn:nth-child(2){display:flex!important;grid-column:2}
+  #quiz .quiz-action-cluster{display:grid!important;grid-template-columns:repeat(3,1fr)!important;grid-column:1 / -1!important;width:100%!important;order:0!important;gap:7px!important}
+  #quiz .quiz-actions-row>.btn:last-child{grid-column:1 / -1!important;grid-row:auto!important;margin-left:0!important}
+}
+@media(min-width:601px) and (max-width:900px){
+  #quiz .quiz-actions-row{grid-template-columns:1fr 1fr!important}
+  #quiz .quiz-actions-row>.btn,#quiz .quiz-action-cluster .btn{font-size:12px!important}
+}
+
 
 
 </style>
@@ -1565,7 +1587,22 @@ function quizQuestionType(q){
   if(/(?:consider|following|which of).*statements?[\s\S]{0,500}\n\s*1[.)]\s+/i.test(text)) return 'statement';
   return 'mcq';
 }
-function cleanQuizLine(v){return String(v||'').replace(/\s+/g,' ').trim();}
+function repairMojibake(v){
+  const s=String(v??'');
+  if(!/[ÃÂà-ÿ][\u0000-\u00ff]/.test(s) && !/(?:Ã|Â|à¤|à¦|â€|ðŸ)/.test(s)) return s;
+  try{
+    const bytes=[]; for(const ch of s){const c=ch.charCodeAt(0); if(c>255)return s; bytes.push(c);}
+    const fixed=new TextDecoder('utf-8',{fatal:false}).decode(new Uint8Array(bytes));
+    return fixed.includes('�') && !s.includes('�') ? s : fixed;
+  }catch{return s;}
+}
+function hasReplacement(v){return String(v??'').includes('�');}
+function devanagariSlice(v){
+  const s=repairMojibake(v); const m=s.match(/[\u0900-\u097F]/);
+  if(!m)return {en:s.trim(),hi:''};
+  return {en:s.slice(0,m.index).trim(),hi:s.slice(m.index).trim()};
+}
+function cleanQuizLine(v){return repairMojibake(String(v||'')).replace(/\s+/g,' ').trim();}
 function stripQuizInstructions(v){return String(v||'').replace(/\n?\s*(?:codes?|select\s+the\s+correct|choose\s+the\s+correct|which\s+of\s+the\s+following|out\s+of\s+these|options?\s+given)[\s\S]*$/i,'').trim();}
 function extractMatchLists(raw){
   const text=String(raw||'').replace(/\r/g,'');
@@ -1598,7 +1635,7 @@ function extractStatementItems(raw){
   const marker=/(?:^|\n)\s*(?:(\d+)[.)]|\(?([A-Z])\)?(?:[.:]|(?=\s))|(?:Statement\s+)([IVX]+)[:.]|\(?([IVX]+)\)?[.:])\s+/g;
   const all=[];let m;while((m=marker.exec(text)))all.push({start:m.index,pos:m.index+m[0].length,label:m[1]||m[2]||m[3]||m[4]});
   if(!all.length)return [];
-  const start=all[0].start;let end=text.length;const tail=text.slice(start);const stop=tail.search(/\s+(?:out\s+of\s+these|which\s+of\s+the\s+above|which\s+of\s+the\s+following|which\s+one\s+of\s+the\s+following|select\s+the\s+correct|choose\s+the\s+correct|codes?\s*:|choose\s+the\s+most\s+appropriate|options?\s+given)/i);if(stop>0)end=start+stop;
+  const start=all[0].start;let end=text.length;const tail=text.slice(start);const stop=tail.search(/\s+(?:out\s+of\s+these|which\s+of\s+(?:the\s+)?(?:above|following|statements)|which\s+one\s+of\s+(?:the\s+)?(?:above|following)|which\s+of\s+the\s+statements|select\s+the\s+correct|choose\s+the\s+correct|codes?\s*:|choose\s+the\s+most\s+appropriate|options?\s+given)/i);if(stop>0)end=start+stop;
   const inRange=all.filter(x=>x.start<end);return inRange.map((x,i)=>({label:x.label,text:cleanQuizLine(text.slice(x.pos,i+1<inRange.length?inRange[i+1].start:end))})).filter(x=>x.text);
 }
 function extractAssertionReason(raw){
@@ -1610,7 +1647,7 @@ function extractAssertionReason(raw){
   const reason=cleanQuizLine(end>=0?rest.slice(0,end):rest);return assertion&&reason?{assertion,reason}:null;
 }
 function renderStructuredStem(q){
-  const raw=String(q?.question||q?.question_en||'');
+  const raw=cleanQuizLine(q?.question||q?.question_en||'');
   const type=quizQuestionType(q);let stem=raw,structure='';
   const esc=escapeHtml;
   if(type==='match'){
@@ -1628,7 +1665,7 @@ function renderStructuredStem(q){
       structure=`<div class="structured-statements"><div class="structured-block-title">Statement</div><div class="statement-box single"><span class="statement-number">•</span><span>${esc(raw)}</span></div></div>`;
     }else{
       const first=raw.search(/(?:\n|^)\s*(?:\d+[.)]|\(?[A-Z]\)?(?:[.:]|\s)|Statement\s+[IVX]+[:.])\s*/);stem=cleanQuizLine(first>0?raw.slice(0,first):raw);
-      structure=`<div class="structured-statements"><div class="structured-block-title">Statements</div>${items.map(x=>`<div class="statement-box"><span class="statement-number">${esc(x.label)}</span><span>${esc(x.text)}</span></div>`).join('')}</div>`;
+      structure=`<div class="structured-statements"><div class="structured-block-title">Statements</div>${items.map(x=>{const bi=devanagariSlice(x.text);return `<div class="statement-box"><span class="statement-number">${esc(x.label)}</span><span><div>${esc(bi.en)}</div>${bi.hi?`<div class="statement-hi">${esc(bi.hi)}</div>`:''}</span></div>`}).join('')}</div>`;
     }
   }else if(type==='assertion'){
     const ar=extractAssertionReason(raw);
@@ -1637,7 +1674,11 @@ function renderStructuredStem(q){
       structure=`<div class="structured-assertion"><div class="assertion-box"><div class="assertion-title">Assertion (A)</div><div>${esc(ar.assertion)}</div></div><div class="reason-box"><div class="assertion-title">Reason (R)</div><div>${esc(ar.reason)}</div></div></div>`;
     }
   }
-  const bilingual=q?.questionHi?`<div class="question-hi">${esc(q.questionHi)}</div>`:'';
+  const sourceBi=devanagariSlice(q?.question||q?.question_en||'');
+  const hiCandidate=repairMojibake(q?.questionHi||'');
+  const bilingualText=(!hiCandidate||hasReplacement(hiCandidate))?sourceBi.hi:hiCandidate;
+  const bilingual=bilingualText?`<div class="question-hi">${esc(bilingualText)}</div>`:'';
+  if(type==='mcq' && sourceBi.hi) stem=sourceBi.en;
   return {type,stem,structure,bilingual};
 }
 function renderQuestion(){
@@ -1679,8 +1720,9 @@ function selectAnswer(i){
   document.querySelectorAll('.answer-option').forEach((b,n)=>{if(n<q.options.length)b.classList.toggle('selected',n===i);else b.classList.toggle('selected',i===null)});
   if(quiz.mode==='practice' && i!==null){
     const fb=document.getElementById('feedback');
-    if(q.answer===null || q.answer===undefined){fb.className='practice-feedback neutral';fb.innerHTML='<b>No valid answer.</b> '+escapeHtml(q.explanation||'This source question has no valid option marked as correct.');}
-    else {const ok=Number(i)===Number(q.answer);fb.className='practice-feedback '+(ok?'ok':'bad');fb.innerHTML=(ok?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+escapeHtml(q.explanation||'');if(!ok)addRevision(q.id);}
+    const ex=devanagariSlice(q.explanation||''); const exHi=repairMojibake(q.explanationHi||''); const hi=(exHi&&!hasReplacement(exHi))?exHi:ex.hi; const explanationHtml=`<div class="ex-en">${escapeHtml(ex.en||'')}</div>${hi?`<div class="ex-hi">${escapeHtml(hi)}</div>`:''}`;
+    if(q.answer===null || q.answer===undefined){fb.className='practice-feedback neutral';fb.innerHTML='<b>No valid answer.</b> '+explanationHtml;}
+    else {const ok=Number(i)===Number(q.answer);fb.className='practice-feedback '+(ok?'ok':'bad');fb.innerHTML=(ok?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+explanationHtml;if(!ok)addRevision(q.id);}
   }
   saveResume();renderNavigator();updateQuizCounts();
 }
