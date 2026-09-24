@@ -1,3 +1,11 @@
+
+## V4.4.1 Translation Update
+- Default model: `gemini-3.5-flash-lite`
+- Default translation batch: 50 questions
+- Persistent Hindi translation cache + resumable imports
+- Automatic transient-error retries
+- Quiz language switch: English / हिन्दी / Bilingual
+
 # DHYEYA V4.0 — Premium Test Engine
 
 See `PREMIUM_V4_CHANGELOG.md` for the consolidated upgrade list.
@@ -58,3 +66,15 @@ The Question Bank importer accepts A-E, zero-based numeric option indexes, `*`, 
 - The quiz no longer performs mojibake "repair" or silently deletes Hindi fields; authoritative source re-import is used to restore corrupted stored content.
 - Inline statement questions are separated into stem, numbered statement cards, and instruction; bilingual statement text is paired when supplied separately.
 - Options render English and Devanagari on separate lines when a bilingual option is supplied.
+
+## V4.4.0 Hindi Pre-Translation
+
+Set these Render environment variables before enabling the importer checkbox:
+
+- `GEMINI_API_KEY` — Gemini API key
+- `GEMINI_MODEL` — translation model name supported by your Gemini API account (default: `gemini-2.5-flash`)
+- `TRANSLATION_BATCH_SIZE` — questions per translation request (default: `20`, max `50`)
+
+The Admin → Question Bank importer now has **Pre-translate missing Hindi** enabled by default. Hindi is generated during import and stored in PostgreSQL. Student quiz sessions do not call the translation API.
+
+The quiz header has a language button cycling through **English → हिन्दी → Bilingual**. The selected mode is saved locally on the student's device.

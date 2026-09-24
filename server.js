@@ -164,6 +164,122 @@ function splitImportedBilingual(value,label='text'){
   return i>=0?{en:s.slice(0,i),hi:s.slice(i)}:{en:s,hi:''};
 }
 const BPSC_SUBJECTS=['General Science','Bihar Special','Modern Indian History','Ancient Indian History','Medieval Indian History','Indian Polity','Geography','Indian Economy'];
+
+const TRANSLATION_MODEL=process.env.GEMINI_MODEL||'gemini-3.5-flash-lite';
+const TRANSLATION_BATCH_SIZE=Math.max(5,Math.min(50,Number(process.env.TRANSLATION_BATCH_SIZE||50)));
+const TRANSLATION_MAX_RETRIES=Math.max(0,Math.min(8,Number(process.env.TRANSLATION_MAX_RETRIES||5)));
+const TRANSLATION_RETRY_BASE_MS=Math.max(250,Math.min(10000,Number(process.env.TRANSLATION_RETRY_BASE_MS||1000)));
+const TRANSLATION_RETRY_MAX_MS=Math.max(2000,Math.min(60000,Number(process.env.TRANSLATION_RETRY_MAX_MS||15000)));
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const BPSC_HINDI_GLOSSARY={
+  'Fundamental Rights':'मौलिक अधिकार','Directive Principles of State Policy':'राज्य के नीति-निदेशक तत्व','Fundamental Duties':'मूल कर्तव्य',
+  'Constitution':'संविधान','Parliament':'संसद','Lok Sabha':'लोकसभा','Rajya Sabha':'राज्यसभा','President':'राष्ट्रपति','Prime Minister':'प्रधानमंत्री',
+  'Permanent Settlement':'स्थायी बंदोबस्त','Subsidiary Alliance':'सहायक संधि','Doctrine of Lapse':'हड़प नीति','Non-Cooperation Movement':'असहयोग आंदोलन',
+  'Civil Disobedience Movement':'सविनय अवज्ञा आंदोलन','Quit India Movement':'भारत छोड़ो आंदोलन','Indian National Congress':'भारतीय राष्ट्रीय कांग्रेस',
+  'Gross Domestic Product':'सकल घरेलू उत्पाद','GDP':'सकल घरेलू उत्पाद','Inflation':'मुद्रास्फीति','Fiscal Deficit':'राजकोषीय घाटा','Repo Rate':'रेपो दर',
+  'Reverse Repo Rate':'रिवर्स रेपो दर','Cash Reserve Ratio':'नकद आरक्षित अनुपात','Monetary Policy':'मौद्रिक नीति','Balance of Payments':'भुगतान संतुलन',
+  'Photosynthesis':'प्रकाश संश्लेषण','Respiration':'श्वसन','Cell':'कोशिका','Mitochondria':'माइटोकॉन्ड्रिया','Chlorophyll':'क्लोरोफिल',
+  'Maurya Empire':'मौर्य साम्राज्य','Gupta Empire':'गुप्त साम्राज्य','Delhi Sultanate':'दिल्ली सल्तनत','Mughal Empire':'मुगल साम्राज्य'
+};
+function translationGlossaryText(){return Object.entries(BPSC_HINDI_GLOSSARY).map(([a,b])=>`${a} = ${b}`).join('; ')}
+function translationSourceHash(q){return crypto.createHash('sha256').update(JSON.stringify({question_en:q.question_en||'',options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),explanation_en:q.explanation_en||''})).digest('hex')}
+function cleanModelJson(text){
+  let s=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+  const start=s.indexOf('['), end=s.lastIndexOf(']'); if(start>=0&&end>start)s=s.slice(start,end+1);
+  return s;
+}
+async function translateQuestionBatch(batch){
+  const key=String(process.env.GEMINI_API_KEY||'').trim();
+  if(!key) throw new Error('Hindi pre-translation is enabled, but GEMINI_API_KEY is not configured on the server.');
+  const payload=batch.map(q=>({
+    id:q.id,
+    question_en:q.question_en,
+    options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),
+    explanation_en:q.explanation_en||''
+  }));
+  const prompt=`You are the Hindi translation engine for DHYEYA, an Indian competitive-exam question platform. Translate the supplied English MCQs into accurate, natural, exam-standard Hindi. Preserve factual meaning exactly; do not solve, modify, shorten, expand, reorder, or reinterpret the questions/options/explanations. Use standard Devanagari. Keep names, abbreviations, numbers, units, article numbers and scientific symbols intact where appropriate. Use the glossary consistently. Return ONLY a JSON array with exactly one object per input item, preserving each id. Schema: [{"id":"...","question_hi":"...","options_hi":["..."],"explanation_hi":"..."}]. options_hi must have exactly the same length and order as options. If explanation_en is empty, return explanation_hi as an empty string. Glossary: ${translationGlossaryText()}
+
+INPUT JSON:
+${JSON.stringify(payload)}`;
+  let d=null,lastError=null;
+  for(let attempt=0;attempt<=TRANSLATION_MAX_RETRIES;attempt++){
+    try{
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(TRANSLATION_MODEL)}:generateContent?key=${encodeURIComponent(key)}`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json'}})
+      });
+      if(r.ok){d=await r.json();break;}
+      const body=await r.text();
+      const retryable=[408,409,425,429,500,502,503,504].includes(r.status);
+      lastError=new Error(`Hindi translation service failed (${r.status}): ${body.slice(0,300)}`);
+      if(!retryable||attempt>=TRANSLATION_MAX_RETRIES)throw lastError;
+    }catch(e){
+      lastError=e;
+      if(attempt>=TRANSLATION_MAX_RETRIES)throw e;
+    }
+    const delay=Math.min(TRANSLATION_RETRY_MAX_MS,TRANSLATION_RETRY_BASE_MS*Math.pow(2,attempt))+Math.floor(Math.random()*250);
+    await sleep(delay);
+  }
+  if(!d)throw lastError||new Error('Hindi translation failed after retries.');
+  const text=d?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
+  let out;
+  try{out=JSON.parse(cleanModelJson(text))}catch(e){throw new Error('Hindi translation service returned invalid JSON.')}
+  if(!Array.isArray(out)||out.length!==batch.length)throw new Error(`Hindi translation returned ${Array.isArray(out)?out.length:0} items for ${batch.length} questions.`);
+  const byId=new Map(out.map(x=>[String(x.id),x]));
+  return batch.map(q=>{
+    const x=byId.get(String(q.id));
+    if(!x)throw new Error(`Hindi translation missing question ${q.id}`);
+    if(typeof x.question_hi!=='string'||!x.question_hi.trim())throw new Error(`Hindi translation missing question text for ${q.id}`);
+    if(!Array.isArray(x.options_hi)||x.options_hi.length!==(q.options||[]).length)throw new Error(`Hindi translation option count mismatch for ${q.id}`);
+    return {
+      ...q,
+      question_hi:normalizeSourceText(x.question_hi,`${q.id} question_hi`,{allowNull:false}),
+      options:(q.options||[]).map((o,i)=>({
+        en:typeof o==='object'?String(o.en??o.text??o.label??''):String(o),
+        hi:normalizeSourceText(x.options_hi[i],`${q.id} option ${String.fromCharCode(65+i)}_hi`,{allowNull:false})
+      })),
+      explanation_hi:q.explanation_en?normalizeSourceText(String(x.explanation_hi||''),`${q.id} explanation_hi`):null,
+      language:'bilingual',
+      metadata:{...(q.metadata||{}),pretranslated_hindi:true,translation_provider:'gemini',translation_model:TRANSLATION_MODEL}
+    };
+  });
+}
+
+async function preTranslateMissingHindi(questions,{enabled=false}={}){
+  if(!enabled)return {questions,translated:0,batches:0,resumed:0};
+  const candidates=questions.filter(q=>!q.question_hi||!Array.isArray(q.options)||q.options.some(o=>typeof o!=='object'||!String(o.hi||'').trim())||(q.explanation_en&&!q.explanation_hi));
+  if(!candidates.length)return {questions,translated:0,batches:0,resumed:0};
+  const translatedById=new Map();
+  let resumed=0;
+  const ids=candidates.map(q=>q.id);
+  const cached=await pool.query('SELECT question_id,source_hash,question_hi,options_hi,explanation_hi,translation_model FROM hindi_translation_cache WHERE question_id = ANY($1::text[])',[ids]);
+  const cache=new Map(cached.rows.map(r=>[String(r.question_id),r]));
+  const needs=[];
+  for(const q of candidates){
+    const c=cache.get(String(q.id));
+    if(c && c.source_hash===translationSourceHash(q) && c.question_hi && Array.isArray(c.options_hi) && c.options_hi.length===(q.options||[]).length){
+      translatedById.set(q.id,{...q,question_hi:c.question_hi,options:(q.options||[]).map((o,i)=>({en:typeof o==='object'?String(o.en??o.text??o.label??''):String(o),hi:String(c.options_hi[i]||'')})),explanation_hi:q.explanation_en?String(c.explanation_hi||''):null,language:'bilingual',metadata:{...(q.metadata||{}),pretranslated_hindi:true,translation_provider:'gemini',translation_model:c.translation_model||TRANSLATION_MODEL,resumed_from_cache:true}});
+      resumed++;
+    }else needs.push(q);
+  }
+  if(!needs.length)return {questions:questions.map(q=>translatedById.get(q.id)||q),translated:0,batches:0,resumed};
+  let batches=0;
+  for(let i=0;i<needs.length;i+=TRANSLATION_BATCH_SIZE){
+    const batch=needs.slice(i,i+TRANSLATION_BATCH_SIZE);
+    const out=await translateQuestionBatch(batch);
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      for(const q of out){
+        translatedById.set(q.id,q);
+        await client.query(`INSERT INTO hindi_translation_cache(question_id,source_hash,question_hi,options_hi,explanation_hi,translation_model) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(question_id) DO UPDATE SET source_hash=EXCLUDED.source_hash,question_hi=EXCLUDED.question_hi,options_hi=EXCLUDED.options_hi,explanation_hi=EXCLUDED.explanation_hi,translation_model=EXCLUDED.translation_model,updated_at=NOW()`,[q.id,translationSourceHash(q),q.question_hi,JSON.stringify((q.options||[]).map(o=>o.hi||'')),q.explanation_hi||null,TRANSLATION_MODEL]);
+      }
+      await client.query('COMMIT');
+    }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+    batches++;
+  }
+  return {questions:questions.map(q=>translatedById.get(q.id)||q),translated:needs.length,batches,resumed};
+}
 const BPSC_SUBJECT_ALIASES={
   'general science':'General Science','science':'General Science','general science & technology':'General Science','science & technology':'General Science','science and technology':'General Science',
   'bihar special':'Bihar Special','bihar':'Bihar Special',
@@ -266,7 +382,7 @@ function normalizeImportedQuestion(q,index){
     try{options=JSON.parse(options)}catch{options=options.split(/\s*\|\s*/)}
   }
   if(!Array.isArray(options))options=[raw.option_a,raw.option_b,raw.option_c,raw.option_d,raw.option_e].filter(x=>x!==undefined&&x!==null&&String(x).trim()!=='');
-  options=options.map((x,i)=>normalizeSourceText(typeof x==='object'&&x!==null?(x.text??x.label??''):x,`Row ${index} option ${String.fromCharCode(65+i)}`,{allowNull:false})).filter(x=>x.trim()!=='');
+  options=options.map((x,i)=>{if(x&&typeof x==='object'){const en=normalizeSourceText(x.en??x.text??x.label??'',`Row ${index} option ${String.fromCharCode(65+i)}`,{allowNull:false});const hi=x.hi?normalizeSourceText(x.hi,`Row ${index} option ${String.fromCharCode(65+i)}_hi`):null;return hi?{en,hi}:en;}const combined=splitImportedBilingual(String(x??''),`Row ${index} option ${String.fromCharCode(65+i)}`);return combined.hi?{en:combined.en,hi:combined.hi}:normalizeSourceText(combined.en,`Row ${index} option ${String.fromCharCode(65+i)}`,{allowNull:false})}).filter(x=>{const en=typeof x==='object'?x.en:x;return String(en||'').trim()!==''});
   if(options.length<2)throw new Error(`Row ${index}: at least 2 options are required`);
 
   let answer=raw.answer??raw.correct_answer??raw.correctOption;
@@ -311,6 +427,8 @@ function normalizeImportBatch(input){
   return {normalized,errors};
 }
 async function importQuestionsToDb(questions,testConfig=null,actor=null){
+  const translationBatch=await preTranslateMissingHindi(questions,{enabled:testConfig?.pretranslate_hindi===true});
+  questions=translationBatch.questions;
   const classifiedBatch=applyBpscClassification(questions,testConfig);
   questions=classifiedBatch.questions;
   const classified=classifiedBatch.classified;
@@ -356,7 +474,7 @@ async function importQuestionsToDb(questions,testConfig=null,actor=null){
     }
     await client.query('COMMIT');
     if(actor) await audit(actor,'question_bank_import',null,{inserted,updated,test_id:testId,mapped});
-    return {inserted,updated,test_id:testId,mapped,classified,subject_counts};
+    return {inserted,updated,test_id:testId,mapped,classified,subject_counts,translated:translationBatch.translated,translation_batches:translationBatch.batches,translation_resumed:translationBatch.resumed||0};
   }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }
 
@@ -416,7 +534,7 @@ app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
     const batch=normalizeImportBatch(input);
     if(batch.errors.length)return res.status(422).json({ok:false,total:input.length,validation:{total:input.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length},errors:batch.errors});
     const normalized=batch.normalized;
-    const test=req.body?.test&&typeof req.body.test==='object'?req.body.test:null;
+    const test=req.body?.test&&typeof req.body.test==='object'?{...req.body.test,pretranslate_hindi:req.body?.pretranslate_hindi===true}:{pretranslate_hindi:req.body?.pretranslate_hindi===true};
     const result=await importQuestionsToDb(normalized,test,req.user);
     res.json({ok:true,total:normalized.length,...result});
   }catch(e){res.status(400).json({error:e.message||'Question import failed.'})}
@@ -570,6 +688,7 @@ async function initializeDatabase(){
   const schemaPath=path.join(__dirname,'schema.sql');
   const schema=fs.readFileSync(schemaPath,'utf8');
   await pool.query(schema);
+  await pool.query(`CREATE TABLE IF NOT EXISTS hindi_translation_cache (question_id TEXT PRIMARY KEY, source_hash TEXT NOT NULL, question_hi TEXT NOT NULL, options_hi JSONB NOT NULL DEFAULT '[]'::jsonb, explanation_hi TEXT, translation_model TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
   const qcols=await pool.query("SELECT column_name,data_type,udt_name FROM information_schema.columns WHERE table_schema='public' AND table_name='questions' AND column_name IN ('question_en','question_hi','options','answer','explanation_en','explanation_hi')");
   const qmap=Object.fromEntries(qcols.rows.map(r=>[r.column_name,r]));
   for(const c of ['question_en','question_hi','explanation_en','explanation_hi'])if(qmap[c]&&!['text','character varying'].includes(qmap[c].data_type))throw new Error(`questions.${c} must be TEXT/VARCHAR; found ${qmap[c].data_type}`);
