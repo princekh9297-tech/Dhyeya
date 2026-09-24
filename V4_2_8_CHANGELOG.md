@@ -19,3 +19,10 @@ Only the Admin → Question Bank → Import Questions interface/workflow was cha
 ## Deliberately untouched
 - Student dashboard, quiz engine, tests, profile, support, analytics, authentication, and other admin screens.
 - Existing PostgreSQL question/test data.
+
+## V4.2.9 — BPSC PYQ Subject Categorisation
+- Replaced dynamic/Uncategorized subject output in the BPSC PYQ Archive with eight fixed BPSC subject categories.
+- Category counts are calculated from PostgreSQL question-to-paper mappings, not hard-coded.
+- Zero-count categories remain visible for consistent navigation.
+- Selecting a category continues into Practice/Exam mode with that subject filter applied.
+- No categorisation changes were made to non-BPSC content.

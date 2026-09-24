@@ -77,7 +77,7 @@ app.get('/api/tests/:id/questions',auth,async(req,res)=>{
   const questions=q.rows;
   res.json({test:q.rows[0]?{id:req.params.id,title:q.rows[0].test_title,duration_seconds:q.rows[0].duration_seconds}:null,questions});
 });
-app.get('/api/pyq/archive',auth,async(_req,res)=>{const q=await pool.query(`SELECT t.id,t.title,t.institution,t.category,t.year,t.sequence_no,t.duration_seconds,t.question_count,t.published,COALESCE((SELECT json_agg(json_build_object('subject',s.subject,'count',s.count) ORDER BY s.subject) FROM (SELECT COALESCE(q.subject,'Uncategorized') subject,COUNT(*)::int count FROM test_questions tq JOIN questions q ON q.id=tq.question_id WHERE tq.test_id=t.id GROUP BY COALESCE(q.subject,'Uncategorized')) s),'[]'::json) AS subjects FROM tests t WHERE t.published=TRUE AND (lower(coalesce(t.category,''))='bpsc pyq archive' OR (lower(coalesce(t.institution,''))='bpsc' AND lower(coalesce(t.title,'')) LIKE '%pyq%')) ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title`);res.json({tests:q.rows})});
+app.get('/api/pyq/archive',auth,async(_req,res)=>{const q=await pool.query(`WITH subject_map(subject,sort_order) AS (VALUES ('General Science',1),('Bihar Special',2),('Modern Indian History',3),('Ancient Indian History',4),('Medieval Indian History',5),('Indian Polity',6),('Geography',7),('Indian Economy',8)), paper_subjects AS (SELECT tq.test_id,sm.subject,sm.sort_order,COUNT(tq.question_id)::int AS count FROM subject_map sm JOIN test_questions tq ON TRUE JOIN questions q ON q.id=tq.question_id WHERE CASE sm.subject WHEN 'General Science' THEN lower(trim(coalesce(q.subject,''))) IN ('general science','science','general science & technology','science & technology','science and technology') WHEN 'Bihar Special' THEN lower(trim(coalesce(q.subject,''))) IN ('bihar special','bihar') WHEN 'Modern Indian History' THEN lower(trim(coalesce(q.subject,''))) IN ('modern indian history','modern history') WHEN 'Ancient Indian History' THEN lower(trim(coalesce(q.subject,''))) IN ('ancient indian history','ancient history') WHEN 'Medieval Indian History' THEN lower(trim(coalesce(q.subject,''))) IN ('medieval indian history','medieval history') WHEN 'Indian Polity' THEN lower(trim(coalesce(q.subject,''))) IN ('indian polity','polity') WHEN 'Geography' THEN lower(trim(coalesce(q.subject,''))) IN ('geography','indian geography') WHEN 'Indian Economy' THEN lower(trim(coalesce(q.subject,''))) IN ('indian economy','economy','indian economics') END GROUP BY tq.test_id,sm.subject,sm.sort_order) SELECT t.id,t.title,t.institution,t.category,t.year,t.sequence_no,t.duration_seconds,t.question_count,t.published,COALESCE((SELECT json_agg(json_build_object('subject',sm.subject,'count',COALESCE(ps.count,0)) ORDER BY sm.sort_order) FROM subject_map sm LEFT JOIN paper_subjects ps ON ps.test_id=t.id AND ps.subject=sm.subject),'[]'::json) AS subjects,COALESCE((SELECT SUM(COALESCE(ps.count,0)) FROM paper_subjects ps WHERE ps.test_id=t.id),0)::int AS mapped_subject_count FROM tests t WHERE t.published=TRUE AND (lower(coalesce(t.category,''))='bpsc pyq archive' OR (lower(coalesce(t.institution,''))='bpsc' AND lower(coalesce(t.title,'')) LIKE '%pyq%')) ORDER BY COALESCE(t.year,0) DESC,COALESCE(t.sequence_no,999999) ASC,t.title`);res.json({tests:q.rows})});
 app.post('/api/attempts',auth,async(req,res)=>{const x=req.body||{};const total=Number(x.total_questions||0),correct=Number(x.correct||0),incorrect=Number(x.incorrect||0),unattempted=Number(x.unattempted??Math.max(0,total-correct-incorrect));const accuracy=total?Number(((correct/total)*100).toFixed(2)):0;const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query(`INSERT INTO test_attempts(user_id,test_id,mode,score,total_questions,correct,incorrect,unattempted,accuracy,time_taken_seconds,started_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,[req.user.id,x.test_id||'unknown',x.mode==='exam'?'exam':'practice',Number(x.score||0),total,correct,incorrect,unattempted,accuracy,Number(x.time_taken_seconds||0),x.started_at||null]);const attempt=q.rows[0];for(const qa of (Array.isArray(x.question_attempts)?x.question_attempts:[])){await client.query(`INSERT INTO question_attempts(user_id,attempt_id,question_id,selected_option,correct_option,is_correct,is_bookmarked,marked_for_review,time_spent_seconds) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[req.user.id,attempt.id,qa.question_id,qa.selected_option??null,qa.correct_option??null,qa.is_correct==null?null:!!qa.is_correct,!!qa.is_bookmarked,!!qa.marked_for_review,Number(qa.time_spent_seconds||0)]);if(qa.is_correct===false&&qa.question_id){await client.query(`INSERT INTO revision_items(user_id,question_id,source,reason,next_revision_date) VALUES($1,$2,$3,$4,CURRENT_DATE+1) ON CONFLICT(user_id,question_id) DO UPDATE SET reason='answered incorrectly',next_revision_date=CURRENT_DATE+1,updated_at=NOW()`,[req.user.id,qa.question_id,x.test_id||'test','answered incorrectly'])}}
 const xp=Math.min(50,Math.max(10,Math.round(correct*2)));await client.query('INSERT INTO xp_ledger(user_id,action,source_id,xp_amount) VALUES($1,$2,$3,$4)',[req.user.id,'test_completed',attempt.id,xp]);const u=await client.query('UPDATE users SET xp=xp+$1,level=((xp+$1)/500)::int+1,last_activity_date=CURRENT_DATE,streak_days=CASE WHEN last_activity_date=CURRENT_DATE-1 THEN streak_days+1 WHEN last_activity_date=CURRENT_DATE THEN streak_days ELSE 1 END,updated_at=NOW() WHERE id=$2 RETURNING xp,level,streak_days',[xp,req.user.id]);await client.query("UPDATE quiz_sessions SET status='completed',updated_at=NOW() WHERE user_id=$1 AND status='in_progress' AND test_id=$2",[req.user.id,String(x.test_id||'')]);await client.query('COMMIT');res.status(201).json({attempt,awarded_xp:xp,student:u.rows[0]})}catch(e){await client.query('ROLLBACK');res.status(400).json({error:e.message})}finally{client.release()}});
 app.get('/api/attempts',auth,async(req,res)=>{res.json({attempts:(await pool.query('SELECT * FROM test_attempts WHERE user_id=$1 ORDER BY submitted_at DESC LIMIT 100',[req.user.id])).rows})});
@@ -163,6 +163,91 @@ function splitImportedBilingual(value,label='text'){
   const i=s.search(/[\u0900-\u097F]/);
   return i>=0?{en:s.slice(0,i),hi:s.slice(i)}:{en:s,hi:''};
 }
+const BPSC_SUBJECTS=['General Science','Bihar Special','Modern Indian History','Ancient Indian History','Medieval Indian History','Indian Polity','Geography','Indian Economy'];
+const BPSC_SUBJECT_ALIASES={
+  'general science':'General Science','science':'General Science','general science & technology':'General Science','science & technology':'General Science','science and technology':'General Science',
+  'bihar special':'Bihar Special','bihar':'Bihar Special',
+  'modern indian history':'Modern Indian History','modern history':'Modern Indian History',
+  'ancient indian history':'Ancient Indian History','ancient history':'Ancient Indian History',
+  'medieval indian history':'Medieval Indian History','medieval history':'Medieval Indian History',
+  'indian polity':'Indian Polity','polity':'Indian Polity','constitution':'Indian Polity',
+  'geography':'Geography','indian geography':'Geography',
+  'indian economy':'Indian Economy','economy':'Indian Economy','indian economics':'Indian Economy'
+};
+const BPSC_CLASSIFIER_RULES={
+  'Bihar Special':[
+    [/\bbihar\b|बिहार/gi,8],[/patna|gaya|muzaffarpur|bhagalpur|darbhanga|nalanda|vaishali|mithila|magadh|tirhut|seemanchal|champaran|bhojpur|koshi|gandak|son|punpun|sone/gi,6],
+    [/bihar.?[\s-]*(history|geography|economy|polity)|history of bihar|bihar government|bihar legislature|bihar assembly|bihar movement|bihar renaissance/gi,10],
+    [/chhath|maithili|bhojpuri|magahi|vajjika|bodhgaya|vikramshila|kesaria|rajgir|sher shah|veer kunwar|jp movement/gi,5]
+  ],
+  'Indian Polity':[
+    [/article|अनुच्छेद|amendment|संशोधन|fundamental rights|मौलिक अधिकार|directive principles|नीति निदेशक|fundamental duties|मूल कर्तव्य/gi,5],
+    [/president|राष्ट्रपति|vice.?president|उपराष्ट्रपति|parliament|संसद|lok sabha|लोकसभा|rajya sabha|राज्यसभा|supreme court|सर्वोच्च न्यायालय|high court|उच्च न्यायालय/gi,5],
+    [/election commission|निर्वाचन आयोग|finance commission|वित्त आयोग|cag|comptroller|ugc|constitutional body|संवैधानिक निकाय|panchayat|पंचायत|municipality|नगरपालिका|federal|संघवाद|citizenship|नागरिकता|emergency|आपातकाल|schedule|अनुसूची|preamble|प्रस्तावना/gi,5]
+  ],
+  'Indian Economy':[
+    [/gdp|gnp|national income|राष्ट्रीय आय|inflation|मुद्रास्फीति|deflation|repo rate|reverse repo|bank rate|cash reserve ratio|crr|slr|monetary policy|मौद्रिक नीति/gi,6],
+    [/fiscal|राजकोषीय|budget|बजट|tax|कर|gst|subsidy|सब्सिडी|deficit|घाटा|public debt|ऋण|balance of payments|भुगतान संतुलन|forex|exchange rate|विनिमय दर/gi,5],
+    [/rbi|reserve bank|भारतीय रिजर्व बैंक|sebi|nabard|sidbi|planning commission|नीति आयोग|niti aayog|poverty|गरीबी|unemployment|बेरोजगारी|economic survey|आर्थिक सर्वेक्षण/gi,5]
+  ],
+  'Geography':[
+    [/latitude|longitude|अक्षांश|देशांतर|monsoon|मानसून|climate|जलवायु|plateau|पठार|plain|मैदान|mountain|पर्वत|river|नदी|drainage|अपवाह|soil|मृदा|vegetation|वनस्पति/gi,4],
+    [/earthquake|भूकंप|volcano|ज्वालामुखी|cyclone|चक्रवात|ocean current|समुद्री धारा|tide|ज्वार|atmosphere|वायुमंडल|biosphere|जलमंडल|lithosphere|स्थलमंडल|contour|isobar|isotherm/gi,5],
+    [/crop|फसल|irrigation|सिंचाई|mineral|खनिज|forest|वन|natural resource|प्राकृतिक संसाधन|population density|जनसंख्या घनत्व/gi,3]
+  ],
+  'General Science':[
+    [/photosynthesis|प्रकाश संश्लेषण|respiration|श्वसन|cell|कोशिका|dna|rna|gene|जीन|enzyme|एंजाइम|hormone|हार्मोन|vitamin|विटामिन|bacteria|बैक्टीरिया|virus|वायरस|blood|रक्त|heart|हृदय|kidney|गुर्दा|disease|रोग/gi,5],
+    [/atom|परमाणु|molecule|अणु|electron|इलेक्ट्रॉन|proton|प्रोटॉन|neutron|न्यूट्रॉन|acid|अम्ल|base|क्षार|salt|लवण|chemical|रासायनिक|periodic table|आवर्त सारणी|catalyst|उत्प्रेरक/gi,5],
+    [/force|बल|motion|गति|velocity|वेग|acceleration|त्वरण|energy|ऊर्जा|power|शक्ति|work|कार्य|pressure|दाब|gravity|गुरुत्व|electric|विद्युत|magnetic|चुंबकीय|light|प्रकाश|sound|ध्वनि|heat|ऊष्मा|temperature|तापमान/gi,5]
+  ],
+  'Ancient Indian History':[
+    [/indus valley|सिंधु घाटी|harappan|हड़प्पा|vedic|वैदिक|rigveda|ऋग्वेद|upanishad|उपनिषद|mahajanapada|महाजनपद|buddha|बुद्ध|jain|जैन|mahavira|महावीर/gi,6],
+    [/maurya|मौर्य|ashoka|अशोक|chandragupta maurya|चंद्रगुप्त मौर्य|gupta|गुप्त|samudragupta|समुद्रगुप्त|harshavardhana|हर्षवर्धन|sangam|संगम|kautilya|कौटिल्य|arthashastra|अर्थशास्त्र/gi,6],
+    [/nalanda|नालंदा|takshashila|तक्षशिला|ajanta|अजंता|ellora|एलोरा|stupa|स्तूप|stupa|temple architecture|प्राचीन भारत/gi,4]
+  ],
+  'Medieval Indian History':[
+    [/delhi sultanate|दिल्ली सल्तनत|slave dynasty|mamluk|खिलजी|tughlaq|तुगलक|sayyid|सैयद|lodi|लोदी|iqta|इकता/gi,6],
+    [/mughal|मुगल|babur|बाबर|humayun|हुमायूं|akbar|अकबर|jahangir|जहांगीर|shah jahan|शाहजहां|aurangzeb|औरंगजेब|mansabdari|मनसबदारी|maratha|मराठा|shivaji|शिवाजी/gi,6],
+    [/bhakti|भक्ति|sufi|सूफी|vijayanagara|विजयनगर|bahmani|बहमनी|sikh guru|सिख गुरु|guru nanak|गुरु नानक/gi,4]
+  ],
+  'Modern Indian History':[
+    [/east india company|ईस्ट इंडिया कंपनी|plassey|प्लासी|buxar|बक्सर|regulating act|रेग्युलेटिंग एक्ट|charter act|चार्टर एक्ट|permanent settlement|स्थायी बंदोबस्त|subsidiary alliance|सहायक संधि|doctrine of lapse|हड़प नीति/gi,6],
+    [/revolt of 1857|1857|1857 का विद्रोह|sepoy mutiny|indian national congress|भारतीय राष्ट्रीय कांग्रेस|swadeshi|स्वदेशी|non.?cooperation|असहयोग|civil disobedience|सविनय अवज्ञा|quit india|भारत छोड़ो|salt march|दांडी|rowlatt|रोलेट|gandhi|गांधी|nehru|नेहरू|subhas|सुभाष|bhagat singh|भगत सिंह/gi,6],
+    [/governor.?general|viceroy|वायसराय|morley.?minto|montagu.?chelmsford|cripps|cabinet mission|क्रिप्स|कैबिनेट मिशन|independence act|स्वतंत्रता अधिनियम/gi,5]
+  ]
+};
+function isBpscPyqImport(testConfig){
+  const cat=String(testConfig?.category||'').trim().toLowerCase();
+  const inst=String(testConfig?.institution||'').trim().toLowerCase();
+  const title=String(testConfig?.title||'').trim().toLowerCase();
+  return cat==='bpsc pyq archive' || (inst==='bpsc' && /pyq|previous year|previous-year/.test(title));
+}
+function classifyBpscPyqSubject(q){
+  const rawSubject=String(q?.subject||'').trim().toLowerCase();
+  if(BPSC_SUBJECT_ALIASES[rawSubject]) return BPSC_SUBJECT_ALIASES[rawSubject];
+  const text=[q?.question_en,q?.question_hi,q?.topic,q?.subtopic,q?.source,q?.metadata?.category,q?.metadata?.source_exam].filter(Boolean).join(' ');
+  const scores=Object.fromEntries(BPSC_SUBJECTS.map(s=>[s,0]));
+  // Bihar-specific signals get a strong priority because many generic history/geography/economy questions mention Bihar.
+  for(const [subject,rules] of Object.entries(BPSC_CLASSIFIER_RULES)) for(const [re,weight] of rules){const m=text.match(re);if(m)scores[subject]+=m.length*weight;}
+  // Explicit generic labels are useful tie-breakers, but never override question evidence.
+  if(/\bhistory\b|इतिहास/i.test(rawSubject)) { scores['Modern Indian History']+=2; scores['Ancient Indian History']+=1; scores['Medieval Indian History']+=1; }
+  if(/\bscience\b|विज्ञान/i.test(rawSubject)) scores['General Science']+=3;
+  if(/\bpolity\b|संविधान|राजव्यवस्था/i.test(rawSubject)) scores['Indian Polity']+=3;
+  if(/\bgeography\b|भूगोल/i.test(rawSubject)) scores['Geography']+=3;
+  if(/\beconom(y|ics)\b|अर्थशास्त्र|अर्थव्यवस्था/i.test(rawSubject)) scores['Indian Economy']+=3;
+  const ranked=BPSC_SUBJECTS.map((subject,index)=>({subject,score:scores[subject],index})).sort((a,b)=>b.score-a.score||a.index-b.index);
+  const best=ranked[0], second=ranked[1];
+  if(best.score>0) return best.subject;
+  // Deterministic fallback for BPSC PYQ uploads: avoid Uncategorized entirely.
+  return 'General Science';
+}
+function applyBpscClassification(questions,testConfig){
+  if(!isBpscPyqImport(testConfig)) return {questions,classified:0};
+  let classified=0;
+  const out=questions.map(q=>{const subject=classifyBpscPyqSubject(q);if(q.subject!==subject){classified++;return {...q,subject,metadata:{...(q.metadata||{}),auto_subject:'BPSC PYQ classifier',auto_subject_version:'4.3.0'}}}return q;});
+  return {questions:out,classified};
+}
+
 function normalizeImportedQuestion(q,index){
   const raw={...(q||{})};
   const rawQuestion=raw.question_en??raw.question??raw.questionText??'';
@@ -226,6 +311,10 @@ function normalizeImportBatch(input){
   return {normalized,errors};
 }
 async function importQuestionsToDb(questions,testConfig=null,actor=null){
+  const classifiedBatch=applyBpscClassification(questions,testConfig);
+  questions=classifiedBatch.questions;
+  const classified=classifiedBatch.classified;
+  const subject_counts=Object.fromEntries(BPSC_SUBJECTS.map(s=>[s,questions.filter(q=>q.subject===s).length]));
   const client=await pool.connect(); let inserted=0,updated=0,testId=null,mapped=0;
   try{
     await client.query('BEGIN');
@@ -267,7 +356,7 @@ async function importQuestionsToDb(questions,testConfig=null,actor=null){
     }
     await client.query('COMMIT');
     if(actor) await audit(actor,'question_bank_import',null,{inserted,updated,test_id:testId,mapped});
-    return {inserted,updated,test_id:testId,mapped};
+    return {inserted,updated,test_id:testId,mapped,classified,subject_counts};
   }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }
 
