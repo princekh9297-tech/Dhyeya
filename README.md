@@ -1,5 +1,5 @@
 
-## V4.4.1 Translation Update
+## V4.5.0 Translation Update
 - Default model: `gemini-3.5-flash-lite`
 - Default translation batch: 50 questions
 - Persistent Hindi translation cache + resumable imports
@@ -78,3 +78,7 @@ Set these Render environment variables before enabling the importer checkbox:
 The Admin → Question Bank importer now has **Pre-translate missing Hindi** enabled by default. Hindi is generated during import and stored in PostgreSQL. Student quiz sessions do not call the translation API.
 
 The quiz header has a language button cycling through **English → हिन्दी → Bilingual**. The selected mode is saved locally on the student's device.
+
+
+## V4.5.0 Smart BPSC Classification
+BPSC PYQ Archive imports now support AI subject classification preview with confidence, reason, per-question approval/rejection, manual subject correction, filters, pagination, and server-side approval enforcement. Hindi pre-translation runs only for approved imported questions.

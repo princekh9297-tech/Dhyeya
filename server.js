@@ -357,6 +357,85 @@ function classifyBpscPyqSubject(q){
   // Deterministic fallback for BPSC PYQ uploads: avoid Uncategorized entirely.
   return 'General Science';
 }
+
+
+function questionContentFingerprint(q){
+  return crypto.createHash('sha256').update([q.question_en||'',JSON.stringify((q.options||[]).map(o=>typeof o==='object'?(o.en??o.text??o.label??''):o))].join('\n').trim().toLowerCase().replace(/\s+/g,' ')).digest('hex');
+}
+function inferExamYear(q){
+  const text=[q.source,q.topic,q.subtopic,q.metadata?.source_exam,q.metadata?.category,q.question_en].filter(Boolean).join(' ');
+  const years=[...text.matchAll(/\b(19|20)\d{2}\b/g)].map(m=>Number(m[0])).filter(y=>y>=1950&&y<=2035);
+  return years.length?Math.max(...years):null;
+}
+function inferExamName(q){
+  const text=[q.source,q.topic,q.subtopic,q.metadata?.source_exam,q.metadata?.category,q.question_en].filter(Boolean).join(' ').toLowerCase();
+  if(/bpsc/.test(text)) return 'BPSC';
+  if(/ssc\s*cgl/.test(text)) return 'SSC CGL';
+  if(/ibps\s*po/.test(text)) return 'IBPS PO';
+  return null;
+}
+async function classifyBpscBatch(batch){
+  const key=String(process.env.GEMINI_API_KEY||'').trim();
+  if(!key) throw new Error('BPSC smart classification requires GEMINI_API_KEY on the server.');
+  const payload=batch.map(q=>({
+    id:q.id,
+    question_en:q.question_en||'',
+    question_hi:q.question_hi||'',
+    options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),
+    source_subject:q.subject||null,
+    topic:q.topic||null,
+    answer:q.answer==null?null:Number(q.answer)
+  }));
+  const subjectDefinitions={
+    'General Science':'Physics, chemistry, biology, human body, scientific principles, basic science and technology when the core concept is scientific.',
+    'Bihar Special':'Bihar-specific history, geography, economy, polity, culture, personalities, institutions, schemes, rivers, districts, movements or other Bihar-only facts.',
+    'Modern Indian History':'Indian history mainly from the 18th century/company rule through the freedom movement and independence.',
+    'Ancient Indian History':'Prehistory, Indus Valley, Vedic age, Mahajanapadas, Buddhism/Jainism, Mauryas, Guptas and other ancient Indian periods/culture.',
+    'Medieval Indian History':'Delhi Sultanate, regional medieval kingdoms, Vijayanagara/Bahmani, Mughals, Marathas, Bhakti-Sufi traditions and other medieval-period topics.',
+    'Indian Polity':'Constitution, Articles, schedules, rights/duties, Parliament, President, judiciary, elections, constitutional/statutory bodies, federalism, local government and governance structure.',
+    'Geography':'Physical, human, economic and Indian geography: landforms, climate, rivers, soils, resources, agriculture, population, maps and spatial relationships.',
+    'Indian Economy':'Macroeconomics, banking, monetary/fiscal policy, taxation, budget, GDP, inflation, poverty, unemployment, public finance, external sector and Indian economic institutions.'
+  };
+  const prompt=`You are DHYEYA's BPSC PYQ subject-classification engine. Classify every supplied question into EXACTLY ONE of these eight subjects and never invent another label. Use the full question and options, not keywords alone. Bihar Special wins only when the question is specifically about Bihar; a question merely mentioning a Bihar example is not automatically Bihar Special. For history, identify the historical period rather than using a generic History label. If two subjects overlap, choose the subject that best matches the question's primary knowledge being tested. Do not solve the question. Return ONLY a JSON array with exactly one object per input item, preserving ids and order. Schema: [{"id":"...","subject":"...","confidence":0.00,"reason":"short factual reason","answer_check":"ok|review|no_answer","answer_reason":"short factual reason"}]. confidence must be between 0 and 1. If uncertain, lower confidence rather than invent certainty. For answer_check, compare the supplied answer with the question/options only when an answer exists; never invent or change the answer. If the answer appears inconsistent, use review. Also infer exam_year and exam_name only when explicitly supported by supplied metadata/source/text. Subject definitions: ${Object.entries(subjectDefinitions).map(([k,v])=>k+': '+v).join('\n')}
+INPUT JSON:\n${JSON.stringify(payload)}`;
+  let d=null,lastError=null;
+  for(let attempt=0;attempt<=TRANSLATION_MAX_RETRIES;attempt++){
+    try{
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(TRANSLATION_MODEL)}:generateContent?key=${encodeURIComponent(key)}`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json',temperature:0}})
+      });
+      if(r.ok){d=await r.json();break;}
+      const body=await r.text(); const retryable=[408,409,425,429,500,502,503,504].includes(r.status);
+      lastError=new Error(`BPSC classification service failed (${r.status}): ${body.slice(0,300)}`);
+      if(!retryable||attempt>=TRANSLATION_MAX_RETRIES)throw lastError;
+    }catch(e){lastError=e;if(attempt>=TRANSLATION_MAX_RETRIES)throw e;}
+    await sleep(Math.min(TRANSLATION_RETRY_MAX_MS,TRANSLATION_RETRY_BASE_MS*Math.pow(2,attempt))+Math.floor(Math.random()*250));
+  }
+  if(!d)throw lastError||new Error('BPSC classification failed after retries.');
+  const text=d?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
+  let out; try{out=JSON.parse(cleanModelJson(text))}catch{throw new Error('BPSC classification service returned invalid JSON.');}
+  if(!Array.isArray(out)||out.length!==batch.length)throw new Error(`BPSC classification returned ${Array.isArray(out)?out.length:0} items for ${batch.length} questions.`);
+  const allowed=new Set(BPSC_SUBJECTS),byId=new Map(out.map(x=>[String(x.id),x]));
+  return batch.map(q=>{
+    const x=byId.get(String(q.id));
+    if(!x||!allowed.has(String(x.subject))) throw new Error(`Invalid BPSC subject classification for ${q.id}.`);
+    const confidence=Math.max(0,Math.min(1,Number(x.confidence)||0));
+    return {...q,subject:String(x.subject),metadata:{...(q.metadata||{}),classification_engine:'gemini-review',classification_model:TRANSLATION_MODEL,classification_confidence:confidence,classification_reason:String(x.reason||'').slice(0,300),classification_reviewed:false,answer_check:String(x.answer_check||'no_answer'),answer_check_reason:String(x.answer_reason||'').slice(0,300),detected_exam_year:Number(x.exam_year)||inferExamYear(q)||null,detected_exam_name:String(x.exam_name||inferExamName(q)||'').slice(0,100)}};
+  });
+}
+
+function bpscReviewRequired(testConfig){
+  if(testConfig?.bpsc_review===true) return true;
+  return isBpscPyqImport(testConfig);
+}
+
+function validateApprovedBpscSubjects(questions,testConfig){
+  if(!bpscReviewRequired(testConfig)) return;
+  const bad=questions.filter(q=>!BPSC_SUBJECTS.includes(String(q.subject||'')));
+  if(bad.length) throw new Error(`${bad.length} BPSC question(s) do not have an approved subject. Review classification before importing.`);
+}
+
 function applyBpscClassification(questions,testConfig){
   if(!isBpscPyqImport(testConfig)) return {questions,classified:0};
   let classified=0;
@@ -427,11 +506,10 @@ function normalizeImportBatch(input){
   return {normalized,errors};
 }
 async function importQuestionsToDb(questions,testConfig=null,actor=null){
+  await validateApprovedBpscSubjects(questions,testConfig);
   const translationBatch=await preTranslateMissingHindi(questions,{enabled:testConfig?.pretranslate_hindi===true});
   questions=translationBatch.questions;
-  const classifiedBatch=applyBpscClassification(questions,testConfig);
-  questions=classifiedBatch.questions;
-  const classified=classifiedBatch.classified;
+  const classified=0;
   const subject_counts=Object.fromEntries(BPSC_SUBJECTS.map(s=>[s,questions.filter(q=>q.subject===s).length]));
   const client=await pool.connect(); let inserted=0,updated=0,testId=null,mapped=0;
   try{
@@ -523,6 +601,41 @@ async function parseUploadedFile(file){
   }
   throw new Error('Unsupported file. Use PDF, JSON or CSV.');
 }
+app.post('/api/admin/questions/quality-preview',auth,admin,async(req,res)=>{
+  try{
+    const input=Array.isArray(req.body)?req.body:(Array.isArray(req.body?.questions)?req.body.questions:null);
+    if(!input?.length)return res.status(400).json({error:'No questions supplied.'});
+    const batch=normalizeImportBatch(input);
+    if(batch.errors.length)return res.status(422).json({error:'Question validation failed.',errors:batch.errors.slice(0,50)});
+    const qs=batch.normalized;
+    const fps=qs.map(questionContentFingerprint);
+    const dupLocal=new Map(); fps.forEach((f,i)=>{if(!dupLocal.has(f))dupLocal.set(f,[]);dupLocal.get(f).push(i)});
+    const db=await pool.query('SELECT id,question_en,options,subject,year,source FROM questions WHERE id=ANY($1::text[]) OR question_en = ANY($2::text[])',[qs.map(q=>q.id),qs.map(q=>q.question_en)]);
+    const existingIds=new Set(db.rows.map(r=>String(r.id)));
+    const existingText=new Map(db.rows.map(r=>[String(r.question_en).trim().toLowerCase().replace(/\s+/g,' '),r]));
+    const quality=qs.map((q,i)=>{const f=fps[i], local=(dupLocal.get(f)||[]).filter(j=>j!==i);const same=existingText.get(String(q.question_en).trim().toLowerCase().replace(/\s+/g,' '));return {...q,metadata:{...(q.metadata||{}),duplicate_in_upload:local.length>0,duplicate_existing:existingIds.has(q.id)||!!same,duplicate_existing_id:same?.id||null,detected_exam_year:q.year||inferExamYear(q)||null,detected_exam_name:inferExamName(q)}}});
+    res.json({ok:true,total:quality.length,questions:quality});
+  }catch(e){res.status(400).json({error:e.message||'Quality preview failed.'})}
+});
+app.post('/api/admin/questions/translate-preview',auth,admin,async(req,res)=>{
+  try{const input=Array.isArray(req.body)?req.body:(Array.isArray(req.body?.questions)?req.body.questions:null);if(!input?.length)return res.status(400).json({error:'No questions supplied.'});const batch=normalizeImportBatch(input);if(batch.errors.length)return res.status(422).json({error:'Question validation failed.',errors:batch.errors.slice(0,20)});const out=[];for(let i=0;i<batch.normalized.length;i+=TRANSLATION_BATCH_SIZE){out.push(...await translateQuestionBatch(batch.normalized.slice(i,i+TRANSLATION_BATCH_SIZE)))}res.json({ok:true,total:out.length,questions:out,model:TRANSLATION_MODEL,batch_size:TRANSLATION_BATCH_SIZE});}catch(e){res.status(400).json({error:e.message||'Hindi preview failed.'})}
+});
+app.post('/api/admin/questions/classify-preview',auth,admin,async(req,res)=>{
+  try{
+    const input=Array.isArray(req.body)?req.body:(Array.isArray(req.body?.questions)?req.body.questions:null);
+    if(!input?.length)return res.status(400).json({error:'No questions supplied.'});
+    if(input.length>10000)return res.status(400).json({error:'Maximum 10,000 questions per classification preview.'});
+    const batch=normalizeImportBatch(input);
+    if(batch.errors.length)return res.status(422).json({error:'Question validation failed before classification.',errors:batch.errors.slice(0,20)});
+    const out=[];
+    for(let i=0;i<batch.normalized.length;i+=TRANSLATION_BATCH_SIZE){
+      const part=batch.normalized.slice(i,i+TRANSLATION_BATCH_SIZE);
+      const classified=await classifyBpscBatch(part);
+      out.push(...classified);
+    }
+    res.json({ok:true,total:out.length,questions:out,model:TRANSLATION_MODEL,batch_size:TRANSLATION_BATCH_SIZE});
+  }catch(e){res.status(400).json({error:e.message||'BPSC classification failed.'})}
+});
 app.post('/api/admin/questions/parse-file',auth,admin,upload.single('file'),async(req,res)=>{
   try{if(!req.file)return res.status(400).json({error:'No file uploaded.'});const parsed=await parseUploadedFile(req.file);const questions=Array.isArray(parsed)?parsed:(parsed.questions||[]);if(!questions.length)return res.status(422).json({error:'No questions could be detected from this file.',held:parsed.held||[]});const batch=normalizeImportBatch(questions);const validation={total:questions.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length};if(batch.errors.length)return res.status(422).json({ok:false,filename:req.file.originalname,total:questions.length,validation,errors:batch.errors,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}});res.json({ok:true,filename:req.file.originalname,total:batch.normalized.length,validation,questions:batch.normalized,held:parsed.held||[],parser:{pages:parsed.pages||null,total_blocks:parsed.total_blocks||null,text_chars:parsed.text_chars||null}})}catch(e){res.status(400).json({error:e.message||'File parsing failed.'})}
 });
