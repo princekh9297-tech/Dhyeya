@@ -185,207 +185,72 @@ function translationGlossaryText(){return Object.entries(BPSC_HINDI_GLOSSARY).ma
 function translationSourceHash(q){return crypto.createHash('sha256').update(JSON.stringify({question_en:q.question_en||'',options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),explanation_en:q.explanation_en||''})).digest('hex')}
 function cleanModelJson(text){
   let s=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
-  const start=s.indexOf('['), end=s.lastIndexOf(']'); if(start>=0&&end>start)s=s.slice(start,end+1);
+  const firstObj=s.indexOf('{'), firstArr=s.indexOf('[');
+  let start=-1, end=-1;
+  if(firstArr>=0 && (firstObj<0 || firstArr<firstObj)){start=firstArr;end=s.lastIndexOf(']');}
+  else if(firstObj>=0){start=firstObj;end=s.lastIndexOf('}');}
+  if(start>=0&&end>start)s=s.slice(start,end+1);
   return s;
 }
+function geminiResponseText(d){
+  return d?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
+}
+function geminiFinishReason(d){return d?.candidates?.[0]?.finishReason||null;}
+async function callGeminiJson({key,model,prompt,schema,temperature=0,maxOutputTokens=65536}){
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+    method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature,maxOutputTokens,responseFormat:{text:{mimeType:'application/json',schema}}}})
+  });
+  if(!r.ok){const body=await r.text();const e=new Error(`Gemini service failed (${r.status}): ${body.slice(0,500)}`);e.status=r.status;throw e;}
+  const d=await r.json();
+  const text=geminiResponseText(d);
+  if(!text.trim()){
+    const e=new Error(`Gemini returned no structured output (finishReason=${geminiFinishReason(d)||'unknown'}).`);e.code=geminiFinishReason(d)==='MAX_TOKENS'?'MODEL_TRUNCATED':'EMPTY_MODEL_OUTPUT';e.finishReason=geminiFinishReason(d);throw e;
+  }
+  return {data:d,text};
+}
+const translationSchema={type:'array',items:{type:'object',properties:{id:{type:'string'},question_hi:{type:'string'},options_hi:{type:'array',items:{type:'string'}},explanation_hi:{type:'string'}},required:['id','question_hi','options_hi','explanation_hi']}};
 async function translateQuestionBatch(batch){
   const key=String(process.env.GEMINI_API_KEY||'').trim();
   if(!key) throw new Error('Hindi pre-translation is enabled, but GEMINI_API_KEY is not configured on the server.');
-  const payload=batch.map(q=>({
-    id:q.id,
-    question_en:q.question_en,
-    options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),
-    explanation_en:q.explanation_en||''
-  }));
-  const prompt=`You are the Hindi translation engine for DHYEYA, an Indian competitive-exam question platform. Translate the supplied English MCQs into accurate, natural, exam-standard Hindi. Preserve factual meaning exactly; do not solve, modify, shorten, expand, reorder, or reinterpret the questions/options/explanations. Use standard Devanagari. Keep names, abbreviations, numbers, units, article numbers and scientific symbols intact where appropriate. Use the glossary consistently. Return ONLY a JSON array with exactly one object per input item, preserving each id. Schema: [{"id":"...","question_hi":"...","options_hi":["..."],"explanation_hi":"..."}]. options_hi must have exactly the same length and order as options. If explanation_en is empty, return explanation_hi as an empty string. Glossary: ${translationGlossaryText()}
-
-INPUT JSON:
-${JSON.stringify(payload)}`;
-  let d=null,lastError=null;
+  const payload=batch.map(q=>({id:q.id,question_en:q.question_en,options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),explanation_en:q.explanation_en||''}));
+  const prompt=`You are the Hindi translation engine for DHYEYA, an Indian competitive-exam question platform. Translate the supplied English MCQs into accurate, natural, exam-standard Hindi. Preserve factual meaning exactly; do not solve, modify, shorten, expand, reorder, or reinterpret the questions/options/explanations. Use standard Devanagari. Keep names, abbreviations, numbers, units, article numbers and scientific symbols intact where appropriate. Use the glossary consistently. Return exactly one result for every input id, in the same order. options_hi must have exactly the same length and order as options. If explanation_en is empty, return explanation_hi as an empty string. Glossary: ${translationGlossaryText()}\n\nINPUT JSON:\n${JSON.stringify(payload)}`;
+  let lastError=null;
   for(let attempt=0;attempt<=TRANSLATION_MAX_RETRIES;attempt++){
     try{
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(TRANSLATION_MODEL)}:generateContent?key=${encodeURIComponent(key)}`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json'}})
+      const {text}=await callGeminiJson({key,model:TRANSLATION_MODEL,prompt,schema:translationSchema,temperature:0,maxOutputTokens:65536});
+      let out;try{out=JSON.parse(text)}catch(e){const err=new Error(`Gemini returned malformed JSON (finishReason=${geminiFinishReason(null)||'unknown'}).`);err.code='INVALID_MODEL_JSON';throw err;}
+      if(!Array.isArray(out)||out.length!==batch.length)throw new Error(`Hindi translation returned ${Array.isArray(out)?out.length:0} items for ${batch.length} questions.`);
+      const byId=new Map(out.map(x=>[String(x.id),x]));
+      return batch.map(q=>{
+        const x=byId.get(String(q.id));
+        if(!x)throw new Error(`Hindi translation missing question ${q.id}`);
+        if(typeof x.question_hi!=='string'||!x.question_hi.trim())throw new Error(`Hindi translation missing question text for ${q.id}`);
+        if(!Array.isArray(x.options_hi)||x.options_hi.length!==(q.options||[]).length)throw new Error(`Hindi translation option count mismatch for ${q.id}`);
+        return {...q,question_hi:normalizeSourceText(x.question_hi,`${q.id} question_hi`,{allowNull:false}),options:(q.options||[]).map((o,i)=>({en:typeof o==='object'?String(o.en??o.text??o.label??''):String(o),hi:normalizeSourceText(x.options_hi[i],`${q.id} option ${String.fromCharCode(65+i)}_hi`,{allowNull:false})})),explanation_hi:q.explanation_en?normalizeSourceText(String(x.explanation_hi||''),`${q.id} explanation_hi`):null,language:'bilingual',metadata:{...(q.metadata||{}),pretranslated_hindi:true,translation_provider:'gemini',translation_model:TRANSLATION_MODEL}};
       });
-      if(r.ok){d=await r.json();break;}
-      const body=await r.text();
-      const retryable=[408,409,425,429,500,502,503,504].includes(r.status);
-      lastError=new Error(`Hindi translation service failed (${r.status}): ${body.slice(0,300)}`);
-      if(!retryable||attempt>=TRANSLATION_MAX_RETRIES)throw lastError;
     }catch(e){
       lastError=e;
-      if(attempt>=TRANSLATION_MAX_RETRIES)throw e;
-    }
-    const delay=Math.min(TRANSLATION_RETRY_MAX_MS,TRANSLATION_RETRY_BASE_MS*Math.pow(2,attempt))+Math.floor(Math.random()*250);
-    await sleep(delay);
-  }
-  if(!d)throw lastError||new Error('Hindi translation failed after retries.');
-  const text=d?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
-  let out;
-  try{out=JSON.parse(cleanModelJson(text))}catch(e){throw new Error('Hindi translation service returned invalid JSON.')}
-  if(!Array.isArray(out)||out.length!==batch.length)throw new Error(`Hindi translation returned ${Array.isArray(out)?out.length:0} items for ${batch.length} questions.`);
-  const byId=new Map(out.map(x=>[String(x.id),x]));
-  return batch.map(q=>{
-    const x=byId.get(String(q.id));
-    if(!x)throw new Error(`Hindi translation missing question ${q.id}`);
-    if(typeof x.question_hi!=='string'||!x.question_hi.trim())throw new Error(`Hindi translation missing question text for ${q.id}`);
-    if(!Array.isArray(x.options_hi)||x.options_hi.length!==(q.options||[]).length)throw new Error(`Hindi translation option count mismatch for ${q.id}`);
-    return {
-      ...q,
-      question_hi:normalizeSourceText(x.question_hi,`${q.id} question_hi`,{allowNull:false}),
-      options:(q.options||[]).map((o,i)=>({
-        en:typeof o==='object'?String(o.en??o.text??o.label??''):String(o),
-        hi:normalizeSourceText(x.options_hi[i],`${q.id} option ${String.fromCharCode(65+i)}_hi`,{allowNull:false})
-      })),
-      explanation_hi:q.explanation_en?normalizeSourceText(String(x.explanation_hi||''),`${q.id} explanation_hi`):null,
-      language:'bilingual',
-      metadata:{...(q.metadata||{}),pretranslated_hindi:true,translation_provider:'gemini',translation_model:TRANSLATION_MODEL}
-    };
-  });
-}
-
-async function preTranslateMissingHindi(questions,{enabled=false}={}){
-  if(!enabled)return {questions,translated:0,batches:0,resumed:0};
-  const candidates=questions.filter(q=>!q.question_hi||!Array.isArray(q.options)||q.options.some(o=>typeof o!=='object'||!String(o.hi||'').trim())||(q.explanation_en&&!q.explanation_hi));
-  if(!candidates.length)return {questions,translated:0,batches:0,resumed:0};
-  const translatedById=new Map();
-  let resumed=0;
-  const ids=candidates.map(q=>q.id);
-  const cached=await pool.query('SELECT question_id,source_hash,question_hi,options_hi,explanation_hi,translation_model FROM hindi_translation_cache WHERE question_id = ANY($1::text[])',[ids]);
-  const cache=new Map(cached.rows.map(r=>[String(r.question_id),r]));
-  const needs=[];
-  for(const q of candidates){
-    const c=cache.get(String(q.id));
-    if(c && c.source_hash===translationSourceHash(q) && c.question_hi && Array.isArray(c.options_hi) && c.options_hi.length===(q.options||[]).length){
-      translatedById.set(q.id,{...q,question_hi:c.question_hi,options:(q.options||[]).map((o,i)=>({en:typeof o==='object'?String(o.en??o.text??o.label??''):String(o),hi:String(c.options_hi[i]||'')})),explanation_hi:q.explanation_en?String(c.explanation_hi||''):null,language:'bilingual',metadata:{...(q.metadata||{}),pretranslated_hindi:true,translation_provider:'gemini',translation_model:c.translation_model||TRANSLATION_MODEL,resumed_from_cache:true}});
-      resumed++;
-    }else needs.push(q);
-  }
-  if(!needs.length)return {questions:questions.map(q=>translatedById.get(q.id)||q),translated:0,batches:0,resumed};
-  let batches=0;
-  for(let i=0;i<needs.length;i+=TRANSLATION_BATCH_SIZE){
-    const batch=needs.slice(i,i+TRANSLATION_BATCH_SIZE);
-    const out=await translateQuestionBatch(batch);
-    const client=await pool.connect();
-    try{
-      await client.query('BEGIN');
-      for(const q of out){
-        translatedById.set(q.id,q);
-        await client.query(`INSERT INTO hindi_translation_cache(question_id,source_hash,question_hi,options_hi,explanation_hi,translation_model) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(question_id) DO UPDATE SET source_hash=EXCLUDED.source_hash,question_hi=EXCLUDED.question_hi,options_hi=EXCLUDED.options_hi,explanation_hi=EXCLUDED.explanation_hi,translation_model=EXCLUDED.translation_model,updated_at=NOW()`,[q.id,translationSourceHash(q),q.question_hi,JSON.stringify((q.options||[]).map(o=>o.hi||'')),q.explanation_hi||null,TRANSLATION_MODEL]);
+      const malformed=e.code==='EMPTY_MODEL_OUTPUT'||e.code==='MODEL_TRUNCATED'||e.code==='INVALID_MODEL_JSON';
+      if(malformed && batch.length>10){
+        const mid=Math.ceil(batch.length/2);
+        const left=await translateQuestionBatch(batch.slice(0,mid));
+        const right=await translateQuestionBatch(batch.slice(mid));
+        return [...left,...right];
       }
-      await client.query('COMMIT');
-    }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
-    batches++;
+      const retryable=[408,409,425,429,500,502,503,504].includes(e.status)||malformed;
+      if(!retryable||attempt>=TRANSLATION_MAX_RETRIES)throw e;
+      await sleep(Math.min(TRANSLATION_RETRY_MAX_MS,TRANSLATION_RETRY_BASE_MS*Math.pow(2,attempt))+Math.floor(Math.random()*250));
+    }
   }
-  return {questions:questions.map(q=>translatedById.get(q.id)||q),translated:needs.length,batches,resumed};
-}
-const BPSC_SUBJECT_ALIASES={
-  'general science':'General Science','science':'General Science','general science & technology':'General Science','science & technology':'General Science','science and technology':'General Science',
-  'bihar special':'Bihar Special','bihar':'Bihar Special',
-  'modern indian history':'Modern Indian History','modern history':'Modern Indian History',
-  'ancient indian history':'Ancient Indian History','ancient history':'Ancient Indian History',
-  'medieval indian history':'Medieval Indian History','medieval history':'Medieval Indian History',
-  'indian polity':'Indian Polity','polity':'Indian Polity','constitution':'Indian Polity',
-  'geography':'Geography','indian geography':'Geography',
-  'indian economy':'Indian Economy','economy':'Indian Economy','indian economics':'Indian Economy'
-};
-const BPSC_CLASSIFIER_RULES={
-  'Bihar Special':[
-    [/\bbihar\b|बिहार/gi,8],[/patna|gaya|muzaffarpur|bhagalpur|darbhanga|nalanda|vaishali|mithila|magadh|tirhut|seemanchal|champaran|bhojpur|koshi|gandak|son|punpun|sone/gi,6],
-    [/bihar.?[\s-]*(history|geography|economy|polity)|history of bihar|bihar government|bihar legislature|bihar assembly|bihar movement|bihar renaissance/gi,10],
-    [/chhath|maithili|bhojpuri|magahi|vajjika|bodhgaya|vikramshila|kesaria|rajgir|sher shah|veer kunwar|jp movement/gi,5]
-  ],
-  'Indian Polity':[
-    [/article|अनुच्छेद|amendment|संशोधन|fundamental rights|मौलिक अधिकार|directive principles|नीति निदेशक|fundamental duties|मूल कर्तव्य/gi,5],
-    [/president|राष्ट्रपति|vice.?president|उपराष्ट्रपति|parliament|संसद|lok sabha|लोकसभा|rajya sabha|राज्यसभा|supreme court|सर्वोच्च न्यायालय|high court|उच्च न्यायालय/gi,5],
-    [/election commission|निर्वाचन आयोग|finance commission|वित्त आयोग|cag|comptroller|ugc|constitutional body|संवैधानिक निकाय|panchayat|पंचायत|municipality|नगरपालिका|federal|संघवाद|citizenship|नागरिकता|emergency|आपातकाल|schedule|अनुसूची|preamble|प्रस्तावना/gi,5]
-  ],
-  'Indian Economy':[
-    [/gdp|gnp|national income|राष्ट्रीय आय|inflation|मुद्रास्फीति|deflation|repo rate|reverse repo|bank rate|cash reserve ratio|crr|slr|monetary policy|मौद्रिक नीति/gi,6],
-    [/fiscal|राजकोषीय|budget|बजट|tax|कर|gst|subsidy|सब्सिडी|deficit|घाटा|public debt|ऋण|balance of payments|भुगतान संतुलन|forex|exchange rate|विनिमय दर/gi,5],
-    [/rbi|reserve bank|भारतीय रिजर्व बैंक|sebi|nabard|sidbi|planning commission|नीति आयोग|niti aayog|poverty|गरीबी|unemployment|बेरोजगारी|economic survey|आर्थिक सर्वेक्षण/gi,5]
-  ],
-  'Geography':[
-    [/latitude|longitude|अक्षांश|देशांतर|monsoon|मानसून|climate|जलवायु|plateau|पठार|plain|मैदान|mountain|पर्वत|river|नदी|drainage|अपवाह|soil|मृदा|vegetation|वनस्पति/gi,4],
-    [/earthquake|भूकंप|volcano|ज्वालामुखी|cyclone|चक्रवात|ocean current|समुद्री धारा|tide|ज्वार|atmosphere|वायुमंडल|biosphere|जलमंडल|lithosphere|स्थलमंडल|contour|isobar|isotherm/gi,5],
-    [/crop|फसल|irrigation|सिंचाई|mineral|खनिज|forest|वन|natural resource|प्राकृतिक संसाधन|population density|जनसंख्या घनत्व/gi,3]
-  ],
-  'General Science':[
-    [/photosynthesis|प्रकाश संश्लेषण|respiration|श्वसन|cell|कोशिका|dna|rna|gene|जीन|enzyme|एंजाइम|hormone|हार्मोन|vitamin|विटामिन|bacteria|बैक्टीरिया|virus|वायरस|blood|रक्त|heart|हृदय|kidney|गुर्दा|disease|रोग/gi,5],
-    [/atom|परमाणु|molecule|अणु|electron|इलेक्ट्रॉन|proton|प्रोटॉन|neutron|न्यूट्रॉन|acid|अम्ल|base|क्षार|salt|लवण|chemical|रासायनिक|periodic table|आवर्त सारणी|catalyst|उत्प्रेरक/gi,5],
-    [/force|बल|motion|गति|velocity|वेग|acceleration|त्वरण|energy|ऊर्जा|power|शक्ति|work|कार्य|pressure|दाब|gravity|गुरुत्व|electric|विद्युत|magnetic|चुंबकीय|light|प्रकाश|sound|ध्वनि|heat|ऊष्मा|temperature|तापमान/gi,5]
-  ],
-  'Ancient Indian History':[
-    [/indus valley|सिंधु घाटी|harappan|हड़प्पा|vedic|वैदिक|rigveda|ऋग्वेद|upanishad|उपनिषद|mahajanapada|महाजनपद|buddha|बुद्ध|jain|जैन|mahavira|महावीर/gi,6],
-    [/maurya|मौर्य|ashoka|अशोक|chandragupta maurya|चंद्रगुप्त मौर्य|gupta|गुप्त|samudragupta|समुद्रगुप्त|harshavardhana|हर्षवर्धन|sangam|संगम|kautilya|कौटिल्य|arthashastra|अर्थशास्त्र/gi,6],
-    [/nalanda|नालंदा|takshashila|तक्षशिला|ajanta|अजंता|ellora|एलोरा|stupa|स्तूप|stupa|temple architecture|प्राचीन भारत/gi,4]
-  ],
-  'Medieval Indian History':[
-    [/delhi sultanate|दिल्ली सल्तनत|slave dynasty|mamluk|खिलजी|tughlaq|तुगलक|sayyid|सैयद|lodi|लोदी|iqta|इकता/gi,6],
-    [/mughal|मुगल|babur|बाबर|humayun|हुमायूं|akbar|अकबर|jahangir|जहांगीर|shah jahan|शाहजहां|aurangzeb|औरंगजेब|mansabdari|मनसबदारी|maratha|मराठा|shivaji|शिवाजी/gi,6],
-    [/bhakti|भक्ति|sufi|सूफी|vijayanagara|विजयनगर|bahmani|बहमनी|sikh guru|सिख गुरु|guru nanak|गुरु नानक/gi,4]
-  ],
-  'Modern Indian History':[
-    [/east india company|ईस्ट इंडिया कंपनी|plassey|प्लासी|buxar|बक्सर|regulating act|रेग्युलेटिंग एक्ट|charter act|चार्टर एक्ट|permanent settlement|स्थायी बंदोबस्त|subsidiary alliance|सहायक संधि|doctrine of lapse|हड़प नीति/gi,6],
-    [/revolt of 1857|1857|1857 का विद्रोह|sepoy mutiny|indian national congress|भारतीय राष्ट्रीय कांग्रेस|swadeshi|स्वदेशी|non.?cooperation|असहयोग|civil disobedience|सविनय अवज्ञा|quit india|भारत छोड़ो|salt march|दांडी|rowlatt|रोलेट|gandhi|गांधी|nehru|नेहरू|subhas|सुभाष|bhagat singh|भगत सिंह/gi,6],
-    [/governor.?general|viceroy|वायसराय|morley.?minto|montagu.?chelmsford|cripps|cabinet mission|क्रिप्स|कैबिनेट मिशन|independence act|स्वतंत्रता अधिनियम/gi,5]
-  ]
-};
-function isBpscPyqImport(testConfig){
-  const cat=String(testConfig?.category||'').trim().toLowerCase();
-  const inst=String(testConfig?.institution||'').trim().toLowerCase();
-  const title=String(testConfig?.title||'').trim().toLowerCase();
-  return cat==='bpsc pyq archive' || (inst==='bpsc' && /pyq|previous year|previous-year/.test(title));
-}
-function classifyBpscPyqSubject(q){
-  const rawSubject=String(q?.subject||'').trim().toLowerCase();
-  if(BPSC_SUBJECT_ALIASES[rawSubject]) return BPSC_SUBJECT_ALIASES[rawSubject];
-  const text=[q?.question_en,q?.question_hi,q?.topic,q?.subtopic,q?.source,q?.metadata?.category,q?.metadata?.source_exam].filter(Boolean).join(' ');
-  const scores=Object.fromEntries(BPSC_SUBJECTS.map(s=>[s,0]));
-  // Bihar-specific signals get a strong priority because many generic history/geography/economy questions mention Bihar.
-  for(const [subject,rules] of Object.entries(BPSC_CLASSIFIER_RULES)) for(const [re,weight] of rules){const m=text.match(re);if(m)scores[subject]+=m.length*weight;}
-  // Explicit generic labels are useful tie-breakers, but never override question evidence.
-  if(/\bhistory\b|इतिहास/i.test(rawSubject)) { scores['Modern Indian History']+=2; scores['Ancient Indian History']+=1; scores['Medieval Indian History']+=1; }
-  if(/\bscience\b|विज्ञान/i.test(rawSubject)) scores['General Science']+=3;
-  if(/\bpolity\b|संविधान|राजव्यवस्था/i.test(rawSubject)) scores['Indian Polity']+=3;
-  if(/\bgeography\b|भूगोल/i.test(rawSubject)) scores['Geography']+=3;
-  if(/\beconom(y|ics)\b|अर्थशास्त्र|अर्थव्यवस्था/i.test(rawSubject)) scores['Indian Economy']+=3;
-  const ranked=BPSC_SUBJECTS.map((subject,index)=>({subject,score:scores[subject],index})).sort((a,b)=>b.score-a.score||a.index-b.index);
-  const best=ranked[0], second=ranked[1];
-  if(best.score>0) return best.subject;
-  // Deterministic fallback for BPSC PYQ uploads: avoid Uncategorized entirely.
-  return 'General Science';
+  throw lastError||new Error('Hindi translation failed after retries.');
 }
 
-
-function questionContentFingerprint(q){
-  return crypto.createHash('sha256').update([q.question_en||'',JSON.stringify((q.options||[]).map(o=>typeof o==='object'?(o.en??o.text??o.label??''):o))].join('\n').trim().toLowerCase().replace(/\s+/g,' ')).digest('hex');
-}
-function inferExamYear(q){
-  const text=[q.source,q.topic,q.subtopic,q.metadata?.source_exam,q.metadata?.category,q.question_en].filter(Boolean).join(' ');
-  const years=[...text.matchAll(/\b(19|20)\d{2}\b/g)].map(m=>Number(m[0])).filter(y=>y>=1950&&y<=2035);
-  return years.length?Math.max(...years):null;
-}
-function inferExamName(q){
-  const text=[q.source,q.topic,q.subtopic,q.metadata?.source_exam,q.metadata?.category,q.question_en].filter(Boolean).join(' ').toLowerCase();
-  if(/bpsc/.test(text)) return 'BPSC';
-  if(/ssc\s*cgl/.test(text)) return 'SSC CGL';
-  if(/ibps\s*po/.test(text)) return 'IBPS PO';
-  return null;
-}
+const classificationSchema={type:'array',items:{type:'object',properties:{id:{type:'string'},subject:{type:'string',enum:BPSC_SUBJECTS},confidence:{type:'number',minimum:0,maximum:1},reason:{type:'string'},answer_check:{type:'string',enum:['ok','review','no_answer']},answer_reason:{type:'string'},exam_year:{type:'integer'},exam_name:{type:'string'}},required:['id','subject','confidence','reason','answer_check','answer_reason']}};
 async function classifyBpscBatch(batch){
   const key=String(process.env.GEMINI_API_KEY||'').trim();
   if(!key) throw new Error('BPSC smart classification requires GEMINI_API_KEY on the server.');
-  const payload=batch.map(q=>({
-    id:q.id,
-    question_en:q.question_en||'',
-    question_hi:q.question_hi||'',
-    options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),
-    source_subject:q.subject||null,
-    topic:q.topic||null,
-    answer:q.answer==null?null:Number(q.answer)
-  }));
+  const payload=batch.map(q=>({id:q.id,question_en:q.question_en||'',question_hi:q.question_hi||'',options:(q.options||[]).map(o=>typeof o==='object'?String(o.en??o.text??o.label??''):String(o)),source_subject:q.subject||null,topic:q.topic||null,answer:q.answer==null?null:Number(q.answer)}));
   const subjectDefinitions={
     'General Science':'Physics, chemistry, biology, human body, scientific principles, basic science and technology when the core concept is scientific.',
     'Bihar Special':'Bihar-specific history, geography, economy, polity, culture, personalities, institutions, schemes, rivers, districts, movements or other Bihar-only facts.',
@@ -396,33 +261,27 @@ async function classifyBpscBatch(batch){
     'Geography':'Physical, human, economic and Indian geography: landforms, climate, rivers, soils, resources, agriculture, population, maps and spatial relationships.',
     'Indian Economy':'Macroeconomics, banking, monetary/fiscal policy, taxation, budget, GDP, inflation, poverty, unemployment, public finance, external sector and Indian economic institutions.'
   };
-  const prompt=`You are DHYEYA's BPSC PYQ subject-classification engine. Classify every supplied question into EXACTLY ONE of these eight subjects and never invent another label. Use the full question and options, not keywords alone. Bihar Special wins only when the question is specifically about Bihar; a question merely mentioning a Bihar example is not automatically Bihar Special. For history, identify the historical period rather than using a generic History label. If two subjects overlap, choose the subject that best matches the question's primary knowledge being tested. Do not solve the question. Return ONLY a JSON array with exactly one object per input item, preserving ids and order. Schema: [{"id":"...","subject":"...","confidence":0.00,"reason":"short factual reason","answer_check":"ok|review|no_answer","answer_reason":"short factual reason"}]. confidence must be between 0 and 1. If uncertain, lower confidence rather than invent certainty. For answer_check, compare the supplied answer with the question/options only when an answer exists; never invent or change the answer. If the answer appears inconsistent, use review. Also infer exam_year and exam_name only when explicitly supported by supplied metadata/source/text. Subject definitions: ${Object.entries(subjectDefinitions).map(([k,v])=>k+': '+v).join('\n')}
-INPUT JSON:\n${JSON.stringify(payload)}`;
-  let d=null,lastError=null;
+  const prompt=`You are DHYEYA's BPSC PYQ subject-classification engine. Classify every supplied question into EXACTLY ONE of these eight subjects and never invent another label. Use the full question and options, not keywords alone. Bihar Special wins only when the question is specifically about Bihar; a question merely mentioning a Bihar example is not automatically Bihar Special. For history, identify the historical period rather than using a generic History label. If two subjects overlap, choose the subject that best matches the question's primary knowledge being tested. Do not solve the question. Return exactly one result per input id, preserving ids. confidence must be between 0 and 1. If uncertain, lower confidence rather than invent certainty. For answer_check, compare the supplied answer with the question/options only when an answer exists; never invent or change the answer. If the answer appears inconsistent, use review. Infer exam_year and exam_name only when explicitly supported by supplied metadata/source/text; otherwise omit them. Subject definitions: ${Object.entries(subjectDefinitions).map(([k,v])=>k+': '+v).join('\n')}\nINPUT JSON:\n${JSON.stringify(payload)}`;
+  let lastError=null;
   for(let attempt=0;attempt<=TRANSLATION_MAX_RETRIES;attempt++){
     try{
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(TRANSLATION_MODEL)}:generateContent?key=${encodeURIComponent(key)}`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:'application/json',temperature:0}})
+      const {text}=await callGeminiJson({key,model:TRANSLATION_MODEL,prompt,schema:classificationSchema,temperature:0,maxOutputTokens:32768});
+      let out;try{out=JSON.parse(text)}catch(e){const err=new Error('BPSC classification returned malformed JSON.');err.code='INVALID_MODEL_JSON';throw err;}
+      if(!Array.isArray(out)||out.length!==batch.length)throw new Error(`BPSC classification returned ${Array.isArray(out)?out.length:0} items for ${batch.length} questions.`);
+      const allowed=new Set(BPSC_SUBJECTS),byId=new Map(out.map(x=>[String(x.id),x]));
+      return batch.map(q=>{
+        const x=byId.get(String(q.id));
+        if(!x||!allowed.has(String(x.subject))) throw new Error(`Invalid BPSC subject classification for ${q.id}.`);
+        const confidence=Math.max(0,Math.min(1,Number(x.confidence)||0));
+        return {...q,subject:String(x.subject),metadata:{...(q.metadata||{}),classification_engine:'gemini-review',classification_model:TRANSLATION_MODEL,classification_confidence:confidence,classification_reason:String(x.reason||'').slice(0,300),classification_reviewed:false,answer_check:String(x.answer_check||'no_answer'),answer_check_reason:String(x.answer_reason||'').slice(0,300),detected_exam_year:Number(x.exam_year)||inferExamYear(q)||null,detected_exam_name:String(x.exam_name||inferExamName(q)||'').slice(0,100)}};
       });
-      if(r.ok){d=await r.json();break;}
-      const body=await r.text(); const retryable=[408,409,425,429,500,502,503,504].includes(r.status);
-      lastError=new Error(`BPSC classification service failed (${r.status}): ${body.slice(0,300)}`);
-      if(!retryable||attempt>=TRANSLATION_MAX_RETRIES)throw lastError;
-    }catch(e){lastError=e;if(attempt>=TRANSLATION_MAX_RETRIES)throw e;}
-    await sleep(Math.min(TRANSLATION_RETRY_MAX_MS,TRANSLATION_RETRY_BASE_MS*Math.pow(2,attempt))+Math.floor(Math.random()*250));
+    }catch(e){
+      lastError=e;const retryable=[408,409,425,429,500,502,503,504].includes(e.status)||e.code==='EMPTY_MODEL_OUTPUT'||e.code==='MODEL_TRUNCATED'||e.code==='INVALID_MODEL_JSON';
+      if(!retryable||attempt>=TRANSLATION_MAX_RETRIES)throw e;
+      await sleep(Math.min(TRANSLATION_RETRY_MAX_MS,TRANSLATION_RETRY_BASE_MS*Math.pow(2,attempt))+Math.floor(Math.random()*250));
+    }
   }
-  if(!d)throw lastError||new Error('BPSC classification failed after retries.');
-  const text=d?.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('')||'';
-  let out; try{out=JSON.parse(cleanModelJson(text))}catch{throw new Error('BPSC classification service returned invalid JSON.');}
-  if(!Array.isArray(out)||out.length!==batch.length)throw new Error(`BPSC classification returned ${Array.isArray(out)?out.length:0} items for ${batch.length} questions.`);
-  const allowed=new Set(BPSC_SUBJECTS),byId=new Map(out.map(x=>[String(x.id),x]));
-  return batch.map(q=>{
-    const x=byId.get(String(q.id));
-    if(!x||!allowed.has(String(x.subject))) throw new Error(`Invalid BPSC subject classification for ${q.id}.`);
-    const confidence=Math.max(0,Math.min(1,Number(x.confidence)||0));
-    return {...q,subject:String(x.subject),metadata:{...(q.metadata||{}),classification_engine:'gemini-review',classification_model:TRANSLATION_MODEL,classification_confidence:confidence,classification_reason:String(x.reason||'').slice(0,300),classification_reviewed:false,answer_check:String(x.answer_check||'no_answer'),answer_check_reason:String(x.answer_reason||'').slice(0,300),detected_exam_year:Number(x.exam_year)||inferExamYear(q)||null,detected_exam_name:String(x.exam_name||inferExamName(q)||'').slice(0,100)}};
-  });
+  throw lastError||new Error('BPSC classification failed after retries.');
 }
 
 function bpscReviewRequired(testConfig){

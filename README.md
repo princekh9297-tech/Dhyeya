@@ -82,3 +82,6 @@ The quiz header has a language button cycling through **English → हिन्
 
 ## V4.5.0 Smart BPSC Classification
 BPSC PYQ Archive imports now support AI subject classification preview with confidence, reason, per-question approval/rejection, manual subject correction, filters, pagination, and server-side approval enforcement. Hindi pre-translation runs only for approved imported questions.
+
+## V4.5.2 — Gemini Structured Translation Reliability
+Hindi pre-translation and BPSC classification now request schema-constrained JSON from Gemini. If a large translation batch is truncated or malformed, DHYEYA automatically splits it into smaller batches and resumes. The configured batch size remains 50; adaptive splitting occurs only when required.
