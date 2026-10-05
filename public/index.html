@@ -1390,7 +1390,7 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
 <div class="page" id="quiz">
 <div class="premium-quiz-head">
 <div class="pq-title"><div class="eyebrow">FOCUS TEST ENGINE</div><h1 id="quizTestTitle">BPSC Test</h1><div class="pq-meta"><span id="quizSubjectMeta">All Subjects</span><span>•</span><span id="quizProgressText">0%</span><span>•</span><span id="quizSaveState">✓ Auto-saved</span></div></div>
-<div class="pq-actions"><div class="quiz-language-wrap"><button class="btn language-switch-btn" id="quizLanguageBtn" onclick="toggleQuizLanguageMenu(event)" type="button">🌐 Bilingual ▾</button><div class="quiz-language-menu" id="quizLanguageMenu" role="menu" aria-label="Quiz language"><button type="button" onclick="setQuizLanguage('english')">🇬🇧 English</button><button type="button" onclick="setQuizLanguage('hindi')">🇮🇳 हिन्दी</button><button type="button" onclick="setQuizLanguage('bilingual')">🌐 Bilingual</button></div></div><button class="btn" id="quizNavBtn" onclick="openQuizNavigator()" type="button">☷ Navigator</button><span class="pill gold" id="quizModePill">Practice Mode</span><span class="pill" id="quizTimer">No Timer</span></div>
+<div class="pq-actions"><button class="btn language-switch-btn" id="quizTranslateBtn" onclick="showChromeTranslateHelp()" type="button">🌐 Translate in Chrome</button><button class="btn" id="quizNavBtn" onclick="openQuizNavigator()" type="button">☷ Navigator</button><span class="pill gold" id="quizModePill">Practice Mode</span><span class="pill" id="quizTimer">No Timer</span></div>
 </div>
 <div class="quiz-progress"><i id="quizProgressBar"></i></div>
 <div class="quiz-shell premium-quiz-shell">
@@ -1714,19 +1714,14 @@ function renderStructuredStem(q){
   if(type==='mcq'&&sourceBi.hi&&!rawHi)bilingual=`<div class="question-hi">${esc(sourceBi.hi)}</div>`;
   return {type,stem,structure,bilingual};
 }
-let quizLanguage=localStorage.getItem('dhyeyaQuizLanguage')||'bilingual';
-function optionParts(opt){
-  if(opt&&typeof opt==='object') return {en:String(opt.en??opt.text??opt.label??''),hi:String(opt.hi??'')};
-  const bi=devanagariSlice(typeof opt==='string'?opt:String(opt??''));
-  return {en:String(bi.en||''),hi:String(bi.hi||'')};
+let quizLanguage='english';
+function showChromeTranslateHelp(){
+  const existing=document.getElementById('chromeTranslateHelp'); if(existing){existing.remove();return;}
+  const m=document.createElement('div'); m.id='chromeTranslateHelp'; m.className='modal show';
+  m.innerHTML='<div class="modalbox" style="max-width:520px"><div class="modalhead"><div><div class="eyebrow">LANGUAGE</div><h2>Translate this quiz</h2></div><button class="close" type="button">×</button></div><div style="margin-top:14px;line-height:1.65;color:var(--muted)"><p><b style="color:var(--text)">Chrome handles the translation.</b> The quiz is intentionally stored and rendered in English so you can translate it into Hindi or another language without maintaining separate question copies.</p><ol style="padding-left:20px"><li>Open the <b style="color:var(--text)">⋮ Chrome menu</b>.</li><li>Choose <b style="color:var(--text)">Translate</b> / <b style="color:var(--text)">Translate page</b>.</li><li>Select <b style="color:var(--text)">Hindi</b> or any language available on your device.</li><li>Keep the quiz open while Chrome translates the page.</li></ol><p style="font-size:12px">If Translate is not shown, use Chrome\'s page menu and look for the translation option. The native Chrome popup is controlled by Chrome and cannot be opened directly by a website.</p></div><button class="btn primary" id="chromeTranslateClose" type="button" style="width:100%;margin-top:12px">Got it</button></div>';
+  document.body.appendChild(m); m.querySelector('.close').onclick=()=>m.remove(); m.querySelector('#chromeTranslateClose').onclick=()=>m.remove();
 }
-function languageLabel(){return quizLanguage==='english'?'🇬🇧 English':quizLanguage==='hindi'?'🇮🇳 हिन्दी':'🌐 Bilingual'}
-function toggleQuizLanguageMenu(e){e?.stopPropagation();const m=document.getElementById('quizLanguageMenu');if(m)m.classList.toggle('open');}
-function closeQuizLanguageMenu(){const m=document.getElementById('quizLanguageMenu');if(m)m.classList.remove('open');}
-function setQuizLanguage(lang){if(!['english','hindi','bilingual'].includes(lang))return;quizLanguage=lang;localStorage.setItem('dhyeyaQuizLanguage',quizLanguage);closeQuizLanguageMenu();renderQuestion();}
-function cycleQuizLanguage(){setQuizLanguage(quizLanguage==='bilingual'?'hindi':quizLanguage==='hindi'?'english':'bilingual')}
-function applyQuizLanguageButton(){const b=document.getElementById('quizLanguageBtn');if(b)b.textContent=languageLabel()+' ▾';}
-document.addEventListener('click',e=>{if(!e.target.closest('.quiz-language-wrap'))closeQuizLanguageMenu()});
+function applyQuizLanguageButton(){const b=document.getElementById('quizTranslateBtn');if(b)b.textContent='🌐 Translate in Chrome';}
 function renderQuestion(){
   const q=quiz.questions[quiz.index]; if(!q)return;
   const total=quiz.questions.length||1, pct=Math.round(((quiz.index+1)/total)*100);
@@ -1744,11 +1739,8 @@ function renderQuestion(){
   const area=document.getElementById('questionArea');
   area.className=''; area.style.maxWidth='920px';area.style.margin='28px auto 10px';area.style.textAlign='left';
   const qMeta=[q.subject, q.year||window.__nexusServerQuiz?.test?.year, q.source_exam||q.source, q.topic].filter(Boolean).map(escapeHtml).join(' · ');
-  const structured=renderStructuredStem(q); const qHi=safeUnicode(q.questionHi||''); const qEn=safeUnicode(q.question||q.question_en||'');
-  let questionHtml;
-  if(quizLanguage==='hindi'){questionHtml=`<h2>${escapeHtml(qHi||qEn)}</h2>`;}
-  else if(quizLanguage==='english'){questionHtml=`<h2>${escapeHtml(qEn)}</h2>`;}
-  else {questionHtml=`<h2>${escapeHtml(structured.stem)}</h2>${structured.bilingual}${structured.structure}`;}
+  const qEn=safeUnicode(q.question||q.question_en||'');
+  const questionHtml=`<h2>${escapeHtml(qEn)}</h2>`;
   area.innerHTML=`<div class="eyebrow">${escapeHtml(q.subject||'GENERAL')}</div><div class="question-source-line">${qMeta||'PYQ ARCHIVE'}</div>${questionHtml}`;
   applyQuizLanguageButton();
   const box=document.getElementById('options');box.innerHTML='';
@@ -1756,7 +1748,7 @@ function renderQuestion(){
     const b=document.createElement('button');b.type='button';b.className='option answer-option';
     if(quiz.answers[q.id]===i)b.classList.add('selected');
     const bi=optionParts(opt);
-    let optionHtml=quizLanguage==='hindi'?`<div>${escapeHtml(bi.hi||bi.en)}</div>`:quizLanguage==='english'?`<div>${escapeHtml(bi.en)}</div>`:`<div>${escapeHtml(bi.en)}</div>${bi.hi?`<div class="option-hi">${escapeHtml(bi.hi)}</div>`:''}`;
+    let optionHtml=`<div>${escapeHtml(bi.en)}</div>`;
     b.innerHTML=`<b>${String.fromCharCode(65+i)}</b><span>${optionHtml}</span>`;
     b.onclick=()=>selectAnswer(i);box.appendChild(b);
   });
@@ -1774,7 +1766,7 @@ function selectAnswer(i){
   document.querySelectorAll('.answer-option').forEach((b,n)=>{if(n<q.options.length)b.classList.toggle('selected',n===i);else b.classList.toggle('selected',i===null)});
   if(quiz.mode==='practice' && i!==null){
     const fb=document.getElementById('feedback');
-    const ex=devanagariSlice(q.explanation||''); const exHi=safeUnicode(q.explanationHi||''); const hi=exHi||ex.hi||''; const explanationHtml=quizLanguage==='hindi'?`<div class="ex-hi">${escapeHtml(hi||ex.en||'')}</div>`:quizLanguage==='english'?`<div class="ex-en">${escapeHtml(ex.en||'')}</div>`:`<div class="ex-en">${escapeHtml(ex.en||'')}</div>${hi?`<div class="ex-hi">${escapeHtml(hi)}</div>`:''}`;
+    const ex=devanagariSlice(q.explanation||''); const explanationHtml=`<div class="ex-en">${escapeHtml(ex.en||q.explanation||'')}</div>`;
     if(q.answer===null || q.answer===undefined){fb.className='practice-feedback neutral';fb.innerHTML='<b>No valid answer.</b> '+explanationHtml;}
     else {const ok=Number(i)===Number(q.answer);fb.className='practice-feedback '+(ok?'ok':'bad');fb.innerHTML=(ok?'<b>Correct.</b> ':'<b>Incorrect.</b> ')+explanationHtml;if(!ok)addRevision(q.id);}
   }
