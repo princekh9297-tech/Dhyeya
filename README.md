@@ -1,87 +1,92 @@
+# BPSC NEXUS — GitHub-ready final upgrade
 
-## V4.5.0 Translation Update
-- Default model: `gemini-3.5-flash-lite`
-- Default translation batch: 50 questions
-- Persistent Hindi translation cache + resumable imports
-- Automatic transient-error retries
-- Quiz language switch: English / हिन्दी / Bilingual
+This package is designed for the EXISTING repository structure:
 
-# DHYEYA V4.0 — Premium Test Engine
+- `index.html` — replace this file
+- `server.mjs` — replace this file
+- `package.json` — replace this file
+- `render.yaml` — replace this file
+- `records-1.js` through `records-8.js` — **DO NOT replace; keep your existing files exactly as they are**
 
-See `PREMIUM_V4_CHANGELOG.md` for the consolidated upgrade list.
+## What is integrated
 
-# DHYEYA 3.2.0
+### Custom Mock
+Uses the existing `RECORDS` array assembled by your current `records-1.js` ... `records-8.js` architecture.
 
-Consolidated authentication/session/profile/admin update.
+Features:
+- subject selection
+- optional topic filter
+- question count
+- Exam / Practice mode
+- All Vault / PYQ / Current Affairs source
+- Random
+- Balanced across selected subjects
+- Weak / Mistake questions
+- Unattempted
+- Revision Bank
+- Bookmarks
+- optional difficulty filter where explicit metadata exists
+- optional timer
+- uses the existing `startQuizItems()` quiz engine
+- custom mock result statistics
 
-- Simple public landing page with separate Student Login and Admin Login.
-- Student and Admin have separate post-login interfaces.
-- Role-aware server routing.
-- Persistent 30-day HTTP-only session cookie with no-store auth pages.
-- Student dashboard uses saved profile name and live time-based greeting.
-- Battle navigation preserves the student session.
-- Student profile supports DP and self-service password change.
-- Admin can generate/reset student credentials, view Student ID, activity, attempts and battles, block/activate accounts, and send notifications.
-- Passwords are never stored or displayed in plaintext; reset passwords are revealed once at generation/reset.
-- Authenticated activity is recorded in the audit log.
-- Existing PostgreSQL database is preserved; no reset is required.
+### Question Translator
+The existing `/api/translate` endpoint is used.
+- question + all options are translated as a single controlled batch
+- original English question remains untouched
+- translations are cached in the browser for the session
+- translation is source-faithful and does not reveal the answer
+
+The existing global EN/हिंदी translator remains intact.
+
+### NIVA 2.0
+Adds:
+- Tutor
+- Doubt Solver
+- Quiz Master
+- Revision Coach
+- Strategy
+- current-question quick actions
+- stronger exam-oriented prompting
+- source-vs-NIVA reasoning distinction
+
+The existing `/api/niva` endpoint remains the secure Gemini proxy.
+
+### Analytics
+The frontend emits anonymous product events such as:
+- vault_loaded
+- custom_mock_open
+- custom_mock_start
+- quiz_start
+- question_answer
+- quiz_finish
+- question_translation
+
+No question text, NIVA conversation, API key, or direct personal information is sent as an analytics event.
+
+For persistent cross-user analytics, set `POSTHOG_API_KEY` on Render. The included `render.yaml` declares it as a secret environment variable. If it is blank, analytics calls safely do nothing server-side.
+
+## Render
+
+Your current service already runs `npm start`, and the server serves `index.html` plus the records files. Keep that architecture.
+
+Required:
+- `GEMINI_API_KEY`
+
+Optional:
+- `GEMINI_MODEL`
+- `POSTHOG_API_KEY`
+- `POSTHOG_HOST`
+
+After uploading these four replacement files to GitHub, Render should redeploy automatically.
+
+## Important
+
+Do NOT upload a second copy of the records files from this package. Your existing eight record files are the source of the question database and are intentionally left untouched.
 
 
-## Ongoing Question Bank Management
-After the first deployment, questions do not need to be added through GitHub. Sign in as Admin → Question Bank. Upload JSON or CSV, preview the detected questions, and import them directly into PostgreSQL. Existing IDs are updated; new IDs are inserted. You can optionally create/update a test and link the imported questions to it.
+## Premium Product Upgrade
 
-No bundled question bank is required. Production questions are stored in PostgreSQL and are added/updated through the Admin Question Bank importer. PDF, JSON and CSV files are processed in memory during import and are not required by the student application after import.
+This build is packaged as a ₹149 launch-ready BPSC practice product. It adds a Premium Command Center with Smart Practice, BPSC Full-Length Mock (150 questions / 120 minutes / +1 and -1/3 scoring), Daily Challenge, Search Vault, PYQ Hub, Revision Bank, Mistake Notebook, Bookmarks, subject performance, weak-topic analysis, activity tracking and progress export.
 
-## V3.9 — Large BPSC PYQ Archive
-
-- Question imports support up to 50,000 questions per file.
-- The browser automatically uploads imports in 1,000-question batches, so 25,000+ question banks do not need to be sent as one giant API request.
-- If a test title is supplied, all batches map into the same test with continuous ordering.
-- Existing question IDs are updated; new IDs are inserted.
-- Admin Question Bank management is paginated at 100 questions per page, avoiding loading thousands of rows into the browser.
-- Student BPSC PYQ Archive remains database-driven and groups questions by subject inside each published BPSC PYQ Archive test.
-- Future question additions do not require GitHub or Render changes.
-
-## Answer handling
-The Question Bank importer accepts A-E, zero-based numeric option indexes, `*`, null, and empty answers. `*`, null, and empty answers are stored as SQL NULL. Five-option questions are supported. Questions with NULL answers remain attemptable but are excluded from correct/incorrect scoring; Practice Mode labels them “No valid answer.”
-
-
-## V4.2.5 — Database-Only Question Source
-
-- Removed the legacy startup bootstrap that loaded the Tarkash question JSON from the repository.
-- Removed the bundled `data/` question-bank files from the deployment package.
-- PostgreSQL is now the sole production source of question/test content.
-- Admin PDF/JSON/CSV imports continue to write directly to PostgreSQL.
-- Existing database content is not deleted, reset, or migrated by this cleanup.
-- A fresh deployment starts with the database schema/admin setup; questions are added through Admin → Question Bank.
-
-## V4.2.6 — Global UTF-8 / Hindi Encoding Fix
-- PostgreSQL is required to report `UTF8`; connection startup requests `client_encoding=UTF8`.
-- Question text columns are verified as TEXT/VARCHAR and `options` as JSONB.
-- JSON/CSV/PDF imports are decoded as UTF-8 and normalized to NFC without guessing/re-writing Hindi.
-- Replacement characters (`�`), NULs, unpaired surrogates and common mojibake patterns are rejected before import.
-- Import validation reports all row errors together instead of stopping at the first row.
-- API JSON responses explicitly use `application/json; charset=utf-8`.
-- Admin Question Bank includes a Unicode Diagnostic action.
-- The quiz no longer performs mojibake "repair" or silently deletes Hindi fields; authoritative source re-import is used to restore corrupted stored content.
-- Inline statement questions are separated into stem, numbered statement cards, and instruction; bilingual statement text is paired when supplied separately.
-- Options render English and Devanagari on separate lines when a bilingual option is supplied.
-
-## V4.4.0 Hindi Pre-Translation
-
-Set these Render environment variables before enabling the importer checkbox:
-
-- `GEMINI_API_KEY` — Gemini API key
-- `GEMINI_MODEL` — translation model name supported by your Gemini API account (default: `gemini-2.5-flash`)
-- `TRANSLATION_BATCH_SIZE` — questions per translation request (default: `20`, max `50`)
-
-The Admin → Question Bank importer now has **Pre-translate missing Hindi** enabled by default. Hindi is generated during import and stored in PostgreSQL. Student quiz sessions do not call the translation API.
-
-The quiz header has a language button cycling through **English → हिन्दी → Bilingual**. The selected mode is saved locally on the student's device.
-
-
-## V4.5.0 Smart BPSC Classification
-BPSC PYQ Archive imports now support AI subject classification preview with confidence, reason, per-question approval/rejection, manual subject correction, filters, pagination, and server-side approval enforcement. Hindi pre-translation runs only for approved imported questions.
-
-## V4.5.2 — Gemini Structured Translation Reliability
-Hindi pre-translation and BPSC classification now request schema-constrained JSON from Gemini. If a large translation batch is truncated or malformed, DHYEYA automatically splits it into smaller batches and resumes. The configured batch size remains 50; adaptive splitting occurs only when required.
+The source question files remain unchanged. The application reports the full 30,157-record vault while Smart Practice and premium tests use only records with machine-verifiable answer data and at least four options (29,234 records in this build). This prevents incomplete source records from being silently served in paid tests.
