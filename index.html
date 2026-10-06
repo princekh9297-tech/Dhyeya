@@ -1749,7 +1749,7 @@ body[data-theme] .premium-quiz-head h1,body[data-theme] .premium-quiz-head h2{fo
       <h1>One master vault.<br><em>Eight subject worlds.</em></h1>
       <p class="home-lead">A high-density BPSC preparation environment built around <b>30,157 lossless source records</b>, structured subject dashboards, intelligent practice, bilingual study support and NIVA — your Gemini-powered BPSC mentor.</p>
       <div class="home-badges">
-        <span>30,157 SOURCE RECORDS</span><span>9 STANDARD SUBJECT UNIVERSES</span><span>ENGLISH + हिंदी</span><span>PRACTICE + EXAM</span>
+        <span>30,157 SOURCE RECORDS</span><span>8 SUBJECT UNIVERSES</span><span>ENGLISH + हिंदी</span><span>PRACTICE + EXAM</span>
       </div>
     </div>
     <div class="home-hero-mark" aria-label="BPSC Nexus Master">
@@ -2017,15 +2017,14 @@ const DUP_GROUPS=1308;
 <script>
 
 const SUBJECTS = [
- {i:1,label:"Polity & Governance",short:"Polity & Governance",icon:"scales",desc:"Constitution, rights, Parliament, judiciary, federalism, elections and governance.",a:"#13294b",b:"#5c3b20"},
- {i:2,label:"Geography",short:"Geography",icon:"globe",desc:"Physical, Indian, world, human and economic geography with mapping concepts.",a:"#063a45",b:"#174d38"},
- {i:3,label:"Environment & Ecology",short:"Environment & Ecology",icon:"leaf",desc:"Ecology, biodiversity, climate change, pollution, conservation and sustainability.",a:"#0a3b2b",b:"#315c20"},
- {i:4,label:"Science & Technology",short:"Science & Technology",icon:"atom",desc:"Physics, chemistry, biology, computer technology, space, defence and biotechnology.",a:"#28164f",b:"#16466a"},
- {i:5,label:"Indian History",short:"Indian History",icon:"fort",desc:"Ancient, medieval and modern India, plus art, culture and heritage.",a:"#4a1e22",b:"#6d4a20"},
- {i:6,label:"Economy & Social Development",short:"Economy & Development",icon:"chart",desc:"Indian economy, banking, public finance, agriculture, trade, growth and social development.",a:"#073b34",b:"#145b49"},
- {i:7,label:"Bihar Special",short:"Bihar Special",icon:"compass",desc:"Bihar-specific static GK and state-focused questions preserved from the original bank.",a:"#20234e",b:"#422b68"},
- {i:8,label:"Current Affairs",short:"Current Affairs",icon:"spark",desc:"National, Bihar, international, economy, science, environment, awards, sports and more.",a:"#082c4a",b:"#5c2d16"},
- {i:9,label:"Mental Ability & Reasoning",short:"Mental Ability & Reasoning",icon:"compass",desc:"General mental ability and reasoning questions retained from the original GS universe.",a:"#20234e",b:"#422b68"}
+ {i:1,label:"General BPSC PYQ",short:"Polity & Governance",icon:"scales",desc:"Constitution, institutions, governance and polity-focused PYQs.",a:"#13294b",b:"#5c3b20"},
+ {i:2,label:"Geography PYQ",short:"Geography",icon:"globe",desc:"Physical, Indian and human geography question universe.",a:"#063a45",b:"#174d38"},
+ {i:3,label:"Environment & Ecology PYQ",short:"Environment & Ecology",icon:"leaf",desc:"Ecology, biodiversity, climate and environmental systems.",a:"#0a3b2b",b:"#315c20"},
+ {i:4,label:"General Science PYQ",short:"General Science",icon:"atom",desc:"Physics, chemistry, biology and applied science PYQs.",a:"#28164f",b:"#16466a"},
+ {i:5,label:"Indian History PYQ",short:"Indian History",icon:"fort",desc:"Ancient, medieval and modern Indian history question bank.",a:"#4a1e22",b:"#6d4a20"},
+ {i:6,label:"Current Affairs",short:"Current Affairs",icon:"spark",desc:"A large current-affairs practice universe with topic metadata.",a:"#082c4a",b:"#5c2d16"},
+ {i:7,label:"Economic & Social Development PYQ",short:"Economy & Social Development",icon:"chart",desc:"Economy, development, social sector and related PYQs.",a:"#073b34",b:"#145b49"},
+ {i:8,label:"General Studies PYQ",short:"General Studies",icon:"compass",desc:"Broad GS question universe with chapter and topic structure.",a:"#20234e",b:"#422b68"}
 ];
 
 const ICONS = {
@@ -2055,9 +2054,9 @@ const text=r=>d(r).question??d(r).q??'';
 const ans=r=>d(r).answer??d(r).correct??d(r).ans;
 const source=r=>r.sourceLabel;
 const section=r=>d(r).subject??d(r).section??'';
-const chapter=r=>d(r).taxonomyChapter??d(r).chapter??'';
-const topic=r=>d(r).taxonomyTopic??d(r).topic??'';
-const subtopic=r=>d(r).taxonomySubtopic??d(r).subtopic??'';
+const chapter=r=>d(r).chapter??'';
+const topic=r=>d(r).topic??'';
+const subtopic=r=>d(r).subtopic??'';
 const topicLabel=r=>{
   const t=String(topic(r)||'').trim(),st=String(subtopic(r)||'').trim(),ch=String(chapter(r)||'').trim();
   if(t)return t;
@@ -2070,7 +2069,7 @@ const options=r=>d(r).options??d(r).opts??[];
 const key=r=>r.sourceIndex+':'+r.originalIndex;
 function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function subjectInfo(i){return SUBJECTS.find(x=>x.i===i)||SUBJECTS[0]}
-function recordsForSubject(i){return RECORDS.filter(r=>Number(d(r).taxonomySubjectId)===Number(i))}
+function recordsForSubject(i){return RECORDS.filter(r=>r.sourceIndex===i)}
 function uniqueVals(rs,fn){return [...new Set(rs.map(fn).map(x=>String(x??'').trim()).filter(Boolean))]}
 function showToast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(showToast.t);showToast.t=setTimeout(()=>t.classList.remove('show'),1800)}
 function sound(type='next'){
@@ -2096,7 +2095,7 @@ function setView(v){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function renderHome(){
-  const total=RECORDS.length,pyq=RECORDS.filter(r=>Number(d(r).taxonomySubjectId)!==8).length,ca=RECORDS.filter(r=>Number(d(r).taxonomySubjectId)===8).length;
+  const total=RECORDS.length,pyq=RECORDS.filter(r=>r.sourceIndex!==6).length,ca=RECORDS.filter(r=>r.sourceIndex===6).length;
   $('#total').textContent=total.toLocaleString();
   $('#pyqs').textContent=pyq.toLocaleString();
   $('#ca').textContent=ca.toLocaleString();
@@ -2126,7 +2125,7 @@ function openSubject(i){
   $('#subjectHero').innerHTML=`<div class="subject-hero" style="--subjectA:${s.a};--subjectB:${s.b}">
     <div class="subject-hero-content"><div class="backline"><button class="btn small" onclick="setView('subjects')" type="button">← Subjects</button><span class="pill">${rs.length.toLocaleString()} records</span><span class="pill">Focused Quiz</span></div>
     <div class="subject-big-icon">${ICONS[s.icon]}</div><div class="eyebrow">${esc(s.label)}</div><h1>${esc(s.short)}</h1><p>${esc(s.desc)}</p>
-    <div class="hero-metrics"><span class="hero-metric"><b>${uniqueVals(rs,chapter).length}</b> chapters</span><span class="hero-metric"><b>${currentSubject===8?uniqueVals(rs,currentAffairsCategory).length:uniqueVals(rs,topicLabel).length}</b> topics</span><span class="hero-metric"><b>${currentSubject===8?currentAffairsCategoryCount(rs):uniqueVals(rs,subtopic).length}</b> study buckets</span></div></div></div>`;
+    <div class="hero-metrics"><span class="hero-metric"><b>${uniqueVals(rs,chapter).length}</b> chapters</span><span class="hero-metric"><b>${currentSubject===6?uniqueVals(rs,currentAffairsCategory).length:uniqueVals(rs,topicLabel).length}</b> topics</span><span class="hero-metric"><b>${currentSubject===6?currentAffairsCategoryCount(rs):uniqueVals(rs,subtopic).length}</b> study buckets</span></div></div></div>`;
   renderSubjectDashboard();setView('subject');playEntryTransition(s);
 }
 function playEntryTransition(s){
@@ -2213,7 +2212,7 @@ const CA_CATEGORY_META={
  'National Affairs & Governance':['Major national events, courts, elections and national developments.','A+','🇮🇳']
 };
 function currentAffairsCategoryCount(rs){return new Set(rs.map(currentAffairsCategory)).size}
-function displayTopicForRecord(r){return currentSubject===8?currentAffairsCategory(r):topicLabel(r)}
+function displayTopicForRecord(r){return currentSubject===6?currentAffairsCategory(r):topicLabel(r)}
 function renderSubjectExplorer(){
  if(!currentSubject||subjectPanel!=='topics')return;
  const rs=recordsForSubject(currentSubject),groups={};
@@ -2223,7 +2222,7 @@ function renderSubjectExplorer(){
  subjectSelection.topics=[...selected].filter(t=>topics.includes(t));
  const box=$('#topicGroups');if(!box)return;
  box.innerHTML=topics.map(t=>{
-   const isSelected=selected.has(t),count=groups[t],meta=currentSubject===8?CA_CATEGORY_META[t]:null;
+   const isSelected=selected.has(t),count=groups[t],meta=currentSubject===6?CA_CATEGORY_META[t]:null;
    return `<button class="easy-topic ${isSelected?'selected':''}" data-topic="${esc(t)}" onclick="toggleTopic(this.dataset.topic)" type="button" aria-pressed="${isSelected}">
      <span class="easy-topic-check">${isSelected?'✓':''}</span><span class="easy-topic-name">${meta?`${meta[2]} ${esc(t)}`:esc(t)}</span><span class="easy-topic-count">${count.toLocaleString()} Q</span>
    </button>`;
@@ -2293,7 +2292,7 @@ function renderCurrentAffairsBoard(){
 }
 function startSmartMixed(){const pool=[...RECORDS].sort(()=>Math.random()-.5).slice(0,20);startQuizItems(pool,'smart','practice')}
 function startMode(mode){
- let pool=mode==='revision'?RECORDS.filter(r=>state.revision[key(r)]):mode==='mistakes'?RECORDS.filter(r=>state.mistakes[key(r)]):mode==='bookmarks'?RECORDS.filter(r=>state.bookmarks[key(r)]):mode==='pyq'?RECORDS.filter(r=>Number(d(r).taxonomySubjectId)!==8):RECORDS.filter(r=>Number(d(r).taxonomySubjectId)===8);
+ let pool=mode==='revision'?RECORDS.filter(r=>state.revision[key(r)]):mode==='mistakes'?RECORDS.filter(r=>state.mistakes[key(r)]):mode==='bookmarks'?RECORDS.filter(r=>state.bookmarks[key(r)]):mode==='pyq'?RECORDS.filter(r=>r.sourceIndex!==6):RECORDS.filter(r=>r.sourceIndex===6);
  if(!pool.length){showToast('No questions are available in this set yet.');return}
  startQuizItems([...pool].sort(()=>Math.random()-.5).slice(0,Math.min(50,pool.length)),mode,'practice');
 }
@@ -2433,10 +2432,9 @@ const WORLD_CONFIG={
   3:{key:'environment',identity:'The Biosphere',entry:'BIOSPHERE AWAKENING',exit:'BIOSPHERE RESTS',kicker:'Ecology • Biodiversity • Climate',progress:'ECOSYSTEM MASTERY',a:'#84CC16',b:'#06B6D4',bg:'#04140D',bg2:'#062015',button:'ENTER BIOSPHERE →',desc:'An interconnected living system for ecology, biodiversity, climate, conservation and environmental processes.',ambient:'environment',svg:`<svg viewBox="0 0 64 64"><path d="M50 10C28 11 13 20 13 37c0 9 7 15 15 15 17 0 26-15 22-42Z"/><path d="M11 54c8-14 17-22 31-30M20 41l-8-1M28 33l-1-9M36 27l10-2"/></svg>`},
   4:{key:'science',identity:'The Laboratory',entry:'LAB INITIALIZATION',exit:'LAB SHUTDOWN',kicker:'Physics • Chemistry • Biology',progress:'RESEARCH MASTERY',a:'#22D3EE',b:'#8B5CF6',bg:'#020617',bg2:'#0A1022',button:'ENTER LAB →',desc:'A high-precision research environment for physics, chemistry, biology, scientific concepts and applied science.',ambient:'science',svg:`<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="4"/><ellipse cx="32" cy="32" rx="25" ry="10"/><ellipse cx="32" cy="32" rx="25" ry="10" transform="rotate(60 32 32)"/><ellipse cx="32" cy="32" rx="25" ry="10" transform="rotate(120 32 32)"/></svg>`},
   5:{key:'history',identity:'The Time Archive',entry:'THE ARCHIVE OPENS',exit:'ARCHIVE CLOSES',kicker:'Ancient • Medieval • Modern',progress:'TIMELINE MASTERY',a:'#C59D5F',b:'#9A3412',bg:'#160D08',bg2:'#26160E',button:'OPEN ARCHIVE →',desc:'A living historical archive where periods, movements, personalities and events unfold along a continuous Indian timeline.',ambient:'history',svg:`<svg viewBox="0 0 64 64"><path d="M9 53h46M13 53V26h8v6h8v-6h8v6h8v-6h6v27M16 26V17h8v9M40 26V17h8v9M29 53V40h7v13"/><path d="M12 13h40M18 13l14-7 14 7"/><circle cx="32" cy="6" r="2"/></svg>`},
-  6:{key:'economy',identity:'The Development Exchange',entry:'MARKET TO DEVELOPMENT',exit:'EXCHANGE CLOSING',kicker:'Economy • Growth • Social Sector',progress:'DEVELOPMENT INDEX',a:'#059669',b:'#D4A72C',bg:'#07120E',bg2:'#0B2018',button:'ENTER EXCHANGE →',desc:'An economic strategy and development center connecting growth, markets, public policy and social-sector understanding.',ambient:'economy',svg:`<svg viewBox="0 0 64 64"><path d="M9 54h48M14 47V31M26 47V22M38 47V27M50 47V14M12 24l14-8 12 8 15-12"/><circle cx="51" cy="14" r="3"/><circle cx="26" cy="16" r="3"/><circle cx="38" cy="24" r="3"/></svg>`},
-  7:{key:'gs',identity:'The Bihar Knowledge Archive',entry:'BIHAR ARCHIVE ACTIVATION',exit:'BIHAR ARCHIVE CLOSING',kicker:'Bihar • History • Geography • State GK',progress:'BIHAR MASTERY',a:'#6366F1',b:'#F59E0B',bg:'#090B16',bg2:'#151827',button:'ENTER BIHAR ARCHIVE →',desc:'A focused Bihar-specific archive preserving every state-based question from the original bank.',ambient:'gs',svg:`<svg viewBox="0 0 64 64"><path d="M8 48h48M12 48V20h40v28M18 20v-7h28v7M22 48V35h20v13M17 27h30M17 33h30"/></svg>`},
-  8:{key:'current',identity:'The News Intelligence Center',entry:'INTELLIGENCE FEED ONLINE',exit:'INTELLIGENCE FEED OFFLINE',kicker:'Awareness • Coverage • Recency',progress:'AWARENESS INDEX',a:'#06B6D4',b:'#2563EB',bg:'#07111F',bg2:'#0B192B',button:'OPEN INTELLIGENCE →',desc:'A live-feeling intelligence center for current events, national developments, global affairs, reports and information signals.',ambient:'current',svg:`<svg viewBox="0 0 64 64"><circle cx="31" cy="32" r="20"/><path d="M11 32h40M31 12c6 6 9 13 9 20s-3 14-9 20M31 12c-6 6-9 13-9 20s3 14 9 20M16 20c5 3 10 4 15 4s10-1 15-4M16 44c5-3 10-4 15-4s10 1 15 4"/><path d="M47 14l5 5-5 5M52 19H44"/></svg>`},
-  9:{key:'gs',identity:'The Aptitude Core',entry:'APTITUDE CORE ACTIVATION',exit:'APTITUDE CORE CLOSING',kicker:'Mental Ability • Reasoning',progress:'APTITUDE MASTERY',a:'#8B5CF6',b:'#F59E0B',bg:'#090B16',bg2:'#151827',button:'ENTER APTITUDE CORE →',desc:'A compact reasoning and mental-ability vault retained from the original General Studies universe.',ambient:'gs',svg:`<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="23"/><path d="M20 39c4-10 8-15 12-15s8 5 12 15M20 39h24M25 19h14M25 45h14"/><circle cx="32" cy="14" r="3"/></svg>`}
+  6:{key:'current',identity:'The News Intelligence Center',entry:'INTELLIGENCE FEED ONLINE',exit:'INTELLIGENCE FEED OFFLINE',kicker:'Awareness • Coverage • Recency',progress:'AWARENESS INDEX',a:'#06B6D4',b:'#2563EB',bg:'#07111F',bg2:'#0B192B',button:'OPEN INTELLIGENCE →',desc:'A live-feeling intelligence center for current events, national developments, global affairs, reports and information signals.',ambient:'current',svg:`<svg viewBox="0 0 64 64"><circle cx="31" cy="32" r="20"/><path d="M11 32h40M31 12c6 6 9 13 9 20s-3 14-9 20M31 12c-6 6-9 13-9 20s3 14 9 20M16 20c5 3 10 4 15 4s10-1 15-4M16 44c5-3 10-4 15-4s10 1 15 4"/><path d="M47 14l5 5-5 5M52 19H44"/></svg>`},
+  7:{key:'economy',identity:'The Development Exchange',entry:'MARKET TO DEVELOPMENT',exit:'EXCHANGE CLOSING',kicker:'Economy • Growth • Social Sector',progress:'DEVELOPMENT INDEX',a:'#059669',b:'#D4A72C',bg:'#07120E',bg2:'#0B2018',button:'ENTER EXCHANGE →',desc:'An economic strategy and development center connecting growth, markets, public policy and social-sector understanding.',ambient:'economy',svg:`<svg viewBox="0 0 64 64"><path d="M9 54h48M14 47V31M26 47V22M38 47V27M50 47V14M12 24l14-8 12 8 15-12"/><circle cx="51" cy="14" r="3"/><circle cx="26" cy="16" r="3"/><circle cx="38" cy="24" r="3"/></svg>`},
+  8:{key:'gs',identity:'The Knowledge Core',entry:'KNOWLEDGE CORE ACTIVATION',exit:'KNOWLEDGE CORE COLLAPSE',kicker:'Integrated General Studies',progress:'KNOWLEDGE CORE',a:'#6366F1',b:'#F59E0B',bg:'#090B16',bg2:'#151827',button:'ENTER KNOWLEDGE CORE →',desc:'The central knowledge repository: broad, connected General Studies domains converge into one navigable core.',ambient:'gs',svg:`<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="9"/><circle cx="32" cy="8" r="4"/><circle cx="54" cy="22" r="4"/><circle cx="49" cy="51" r="4"/><circle cx="15" cy="51" r="4"/><circle cx="10" cy="22" r="4"/><path d="M32 17v6M40 27l10-3M39 38l7 9M25 38l-7 9M24 27l-10-3"/></svg>`}
 };
 const CORE_THEMES=[
  ['midnight-command','🌌','Midnight Command','Focused • cinematic • distraction-free','Deep navy command deck with restrained blue-gold signals.'],
@@ -2475,7 +2473,7 @@ function worldMastery(sid){
  return Math.round(attempts.filter(r=>state.attempts[key(r)].correct).length/attempts.length*100);
 }
 function worldMetricLabel(sid){
- return sid===2?'explored':sid===5?'events studied':sid===8?'signals covered':sid===6?'development coverage':'mastery'
+ return sid===2?'explored':sid===5?'events studied':sid===6?'signals covered':sid===7?'development coverage':'mastery'
 }
 function worldAmbientHTML(w){
  return `<div class="world-ambient world-${w.ambient}-ambient" aria-hidden="true"><i></i><i></i><i></i></div>`;
@@ -2615,8 +2613,8 @@ setView=function(v){
 /* Home/subject render overrides — data is read directly from RECORDS */
 renderHome=function(){
  $('#total').textContent=RECORDS.length.toLocaleString();
- $('#pyqs').textContent=RECORDS.filter(r=>Number(d(r).taxonomySubjectId)!==8).length.toLocaleString();
- $('#ca').textContent=RECORDS.filter(r=>Number(d(r).taxonomySubjectId)===8).length.toLocaleString();
+ $('#pyqs').textContent=RECORDS.filter(r=>r.sourceIndex!==6).length.toLocaleString();
+ $('#ca').textContent=RECORDS.filter(r=>r.sourceIndex===6).length.toLocaleString();
  $('#attempted').textContent=Object.keys(state.attempts).length.toLocaleString();
  $('#correct').textContent=Object.values(state.attempts).filter(x=>x.correct).length.toLocaleString();
  $('#bookmarked').textContent=Object.keys(state.bookmarks).length.toLocaleString();
@@ -3407,11 +3405,11 @@ function closeModal(){E('nxpModal')?.remove();NXP.modal=null}
 function start(items,mode='practice',origin='premium'){items=items.filter(valid);if(!items.length){showToast('No quiz-ready questions match this selection.');return}closeModal();startQuizItems(items,origin,mode,true)}
 function shuffled(a){const x=[...a];for(let i=x.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[x[i],x[j]]=[x[j],x[i]]}return x}
 function smart(){const body=`<div class="nxp-form"><div class="nxp-field"><label>Question count</label><select id="nxpCount"><option>10</option><option>25</option><option selected>50</option><option>100</option><option>150</option></select></div><div class="nxp-field"><label>Strategy</label><select id="nxpStrategy"><option value="mixed">Mixed Smart</option><option value="unattempted">Unattempted</option><option value="weak">Weak Areas</option><option value="mistakes">Mistake Notebook</option><option value="revision">Revision Bank</option><option value="bookmarks">Bookmarks</option></select></div><div class="nxp-field"><label>Source</label><select id="nxpSource"><option value="all">All Vault</option><option value="pyq">PYQ only</option><option value="ca">Current Affairs</option></select></div><div class="nxp-field"><label>Mode</label><select id="nxpMode"><option value="practice">Practice Mode</option><option value="exam">Exam Mode</option></select></div></div><div id="nxpSmartPreview" class="nxp-preview"></div><div class="nxp-modal-actions"><button class="btn" onclick="NXP_PRODUCT.close()">Cancel</button><button class="btn primary" onclick="NXP_PRODUCT.smartStart()">Generate Test →</button></div>`;modal('Smart Practice',body);['nxpCount','nxpStrategy','nxpSource','nxpMode'].forEach(id=>E(id).addEventListener('change',updateSmart));updateSmart()}
-function smartPool(){let p=validRecords();const src=E('nxpSource')?.value||'all';if(src==='pyq')p=p.filter(r=>Number(d(r).taxonomySubjectId)!==8);if(src==='ca')p=p.filter(r=>Number(d(r).taxonomySubjectId)===8);const st=E('nxpStrategy')?.value||'mixed';if(st==='unattempted')p=p.filter(r=>!state.attempts[rid(r)]);if(st==='weak'){const bad=new Set(topicStats().filter(x=>x.p<60).map(x=>x.name));p=p.filter(r=>bad.has(topicLabel(r)))}if(st==='mistakes')p=p.filter(r=>state.mistakes[rid(r)]);if(st==='revision')p=p.filter(r=>state.revision[rid(r)]);if(st==='bookmarks')p=p.filter(r=>state.bookmarks[rid(r)]);return p}
+function smartPool(){let p=validRecords();const src=E('nxpSource')?.value||'all';if(src==='pyq')p=p.filter(r=>r.sourceIndex!==6);if(src==='ca')p=p.filter(r=>r.sourceIndex===6);const st=E('nxpStrategy')?.value||'mixed';if(st==='unattempted')p=p.filter(r=>!state.attempts[rid(r)]);if(st==='weak'){const bad=new Set(topicStats().filter(x=>x.p<60).map(x=>x.name));p=p.filter(r=>bad.has(topicLabel(r)))}if(st==='mistakes')p=p.filter(r=>state.mistakes[rid(r)]);if(st==='revision')p=p.filter(r=>state.revision[rid(r)]);if(st==='bookmarks')p=p.filter(r=>state.bookmarks[rid(r)]);return p}
 function updateSmart(){const p=smartPool(),n=Number(E('nxpCount')?.value||50),mode=E('nxpMode')?.value||'practice';E('nxpSmartPreview').innerHTML=`<b>${Math.min(n,p.length).toLocaleString()} questions ready</b> · ${mode==='exam'?'Exam Mode':'Practice Mode'}<br><span class="nxp-muted">${p.length.toLocaleString()} questions match this strategy.</span>`}
 function smartStart(){const p=smartPool(),n=Number(E('nxpCount').value||50),mode=E('nxpMode').value;start(shuffled(p).slice(0,n),mode,'smart-practice')}
 function fullMock(){modal('BPSC Full-Length Mock',`<div class="nxp-preview"><b>Official-style practice configuration</b><br>150 questions · 120 minutes · +1 for correct · −1/3 for incorrect · 0 for not attempted.<br><span class="nxp-muted">Questions are drawn from the verified quiz-ready vault and balanced across the eight source universes.</span></div><div class="nxp-modal-actions"><button class="btn" onclick="NXP_PRODUCT.close()">Cancel</button><button class="btn primary" onclick="NXP_PRODUCT.fullStart()">Start Full Mock →</button></div>`)}
-function fullStart(){let p=validRecords(),ids=SUBJECTS.map(s=>s.i),b=ids.map(id=>shuffled(p.filter(r=>Number(d(r).taxonomySubjectId)===id)));const out=[];while(out.length<150&&b.some(x=>x.length))for(const x of b)if(x.length&&out.length<150)out.push(x.shift());start(out,'exam','bpsc-full-mock')}
+function fullStart(){let p=validRecords(),ids=SUBJECTS.map(s=>s.i),b=ids.map(id=>shuffled(p.filter(r=>r.sourceIndex===id)));const out=[];while(out.length<150&&b.some(x=>x.length))for(const x of b)if(x.length&&out.length<150)out.push(x.shift());start(out,'exam','bpsc-full-mock')}
 function daily(){let p=validRecords();const seed=Number(todayKey().replaceAll('-',''));function hash(i){let x=(seed+i*2654435761)>>>0;x^=x>>>16;x=Math.imul(x,2246822507)>>>0;x^=x>>>13;return x}p=[...p].sort((a,b)=>hash(Number(a.originalIndex||0)+Number(a.sourceIndex||0)*100000)-hash(Number(b.originalIndex||0)+Number(b.sourceIndex||0)*100000));start(p.slice(0,50),'exam','daily-'+todayKey())}
 function revision(){const p=validRecords().filter(r=>state.revision[rid(r)]);start(shuffled(p).slice(0,100),'practice','revision-bank')}
 function mistakes(){const p=validRecords().filter(r=>state.mistakes[rid(r)]);start(shuffled(p).slice(0,100),'practice','mistake-notebook')}
