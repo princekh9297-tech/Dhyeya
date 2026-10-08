@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS questions (
 );
 CREATE INDEX IF NOT EXISTS idx_questions_subject_topic ON questions(subject,topic);
 CREATE INDEX IF NOT EXISTS idx_questions_year ON questions(year DESC);
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS quality_score NUMERIC(5,2);
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS concept_tag TEXT;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS pyq_frequency INTEGER DEFAULT 0;
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS learning_objective TEXT;
+CREATE INDEX IF NOT EXISTS idx_questions_intelligence ON questions(subject,topic,difficulty);
+CREATE INDEX IF NOT EXISTS idx_revision_status_due ON revision_items(user_id,revision_status,next_revision_date);
 
 CREATE TABLE IF NOT EXISTS test_questions (
   test_id UUID NOT NULL REFERENCES tests(id) ON DELETE CASCADE,

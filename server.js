@@ -104,6 +104,53 @@ app.post('/api/revision/practice',auth,async(req,res)=>{try{
   res.json({questions:rows});
 }catch(e){res.status(500).json({error:'Could not start revision practice.'})}});
 
+
+// v4.7 intelligence endpoints
+app.get('/api/intelligence/readiness',auth,async(req,res)=>{try{
+  const [a,subs,rev]=await Promise.all([
+    pool.query(`SELECT COUNT(*)::int questions,COALESCE(SUM(correct),0)::int correct,COALESCE(SUM(time_taken_seconds),0)::int time,COUNT(*)::int attempts FROM test_attempts WHERE user_id=$1`,[req.user.id]),
+    pool.query(`SELECT COALESCE(q.subject,'Unclassified') subject,COUNT(*)::int attempts,COALESCE(SUM(CASE WHEN qa.is_correct THEN 1 ELSE 0 END),0)::int correct,COALESCE(AVG(qa.time_spent_seconds),0)::numeric avg_time FROM question_attempts qa LEFT JOIN questions q ON q.id=qa.question_id WHERE qa.user_id=$1 GROUP BY COALESCE(q.subject,'Unclassified') ORDER BY attempts DESC`,[req.user.id]),
+    pool.query(`SELECT COUNT(*)::int due FROM revision_items WHERE user_id=$1 AND revision_status='needs_revision' AND (next_revision_date IS NULL OR next_revision_date<=CURRENT_DATE)`,[req.user.id])
+  ]);
+  const total=Number(a.rows[0]?.questions||0), correct=Number(a.rows[0]?.correct||0), accuracy=total?correct/total*100:0, avgTime=total?Number(a.rows[0]?.time||0)/total:0;
+  const consistency=Math.min(100,Number(a.rows[0]?.attempts||0)*10);
+  const subjectRows=subs.rows.map(x=>({...x,accuracy:Number(x.attempts)?Number(x.correct)/Number(x.attempts)*100:0}));
+  const weak=subjectRows.filter(x=>Number(x.attempts)>=3).sort((x,y)=>x.accuracy-y.accuracy);
+  const breadth=Math.min(100,subjectRows.length/7*100);
+  const index=total?Math.round(accuracy*.45+consistency*.20+breadth*.15+Math.min(100,Math.max(0,100-avgTime*1.5))*.10+Math.max(0,100-Math.min(100,Number(rev.rows[0]?.due||0)*2))*.10):0;
+  const next=weak[0];
+  res.json({readiness:{index,accuracy,questions:total,consistency,avg_time:avgTime,revision_due:Number(rev.rows[0]?.due||0),subjects:subjectRows,top_weak:weak.slice(0,3),next_action:next?`Strengthen ${next.subject}`:'Start building your attempt history',next_detail:next?`${Math.round(next.accuracy)}% accuracy across ${next.attempts} question attempts. Your adaptive practice will prioritize this area.`:'Attempt a few tests and question-level analytics will unlock personalized recommendations.',label:index>=80?'Strong preparation base':index>=60?'Building a competitive base':index>=40?'Needs targeted strengthening':'Start with consistent practice'}})
+}catch(e){console.error('readiness',e);res.status(500).json({error:'Preparation intelligence unavailable'})}});
+
+app.get('/api/intelligence/adaptive',auth,async(req,res)=>{try{
+  const limit=Math.min(50,Math.max(5,Number(req.query.limit||20)));
+  const weak=(await pool.query(`SELECT COALESCE(q.subject,'Unclassified') subject FROM question_attempts qa LEFT JOIN questions q ON q.id=qa.question_id WHERE qa.user_id=$1 GROUP BY COALESCE(q.subject,'Unclassified') HAVING COUNT(*)>=2 ORDER BY (SUM(CASE WHEN qa.is_correct THEN 1 ELSE 0 END)::float/COUNT(*)) ASC,COUNT(*) DESC LIMIT 3`,[req.user.id])).rows.map(x=>x.subject);
+  let rows;
+  if(weak.length){rows=(await pool.query(`SELECT q.* FROM questions q WHERE COALESCE(q.subject,'Unclassified') = ANY($1::text[]) AND NOT EXISTS(SELECT 1 FROM question_attempts qa WHERE qa.user_id=$2 AND qa.question_id=q.id AND qa.is_correct=true) ORDER BY random() LIMIT $3`,[weak,req.user.id,limit])).rows}
+  else rows=(await pool.query(`SELECT q.* FROM questions q WHERE NOT EXISTS(SELECT 1 FROM question_attempts qa WHERE qa.user_id=$1 AND qa.question_id=q.id) ORDER BY random() LIMIT $2`,[req.user.id,limit])).rows;
+  if(rows.length<limit){const extra=(await pool.query(`SELECT q.* FROM questions q WHERE q.id <> ALL($1::text[]) ORDER BY random() LIMIT $2`,[rows.map(x=>x.id),limit-rows.length])).rows;rows.push(...extra)}
+  res.json({questions:rows,focus:weak})
+}catch(e){console.error('adaptive',e);res.status(500).json({error:'Adaptive practice unavailable'})}});
+
+app.post('/api/revision/:id/result',auth,async(req,res)=>{try{
+  const correct=!!req.body?.correct;
+  const r=(await pool.query(`SELECT * FROM revision_items WHERE id=$1 AND user_id=$2`,[req.params.id,req.user.id])).rows[0];if(!r)return res.status(404).json({error:'Revision item not found'});
+  const count=Number(r.revision_count||0)+1;
+  const intervals=[1,3,7,15,30];
+  const next=correct?`CURRENT_DATE + ${intervals[Math.min(intervals.length-1,count-1)]}`:'CURRENT_DATE + 1';
+  const status=correct&&count>=3?'fixed':'needs_revision';
+  const q=await pool.query(`UPDATE revision_items SET revision_count=$1,revision_status=$2,next_revision_date=${next},updated_at=NOW() WHERE id=$3 RETURNING *`,[count,status,r.id]);res.json({item:q.rows[0]})
+}catch(e){res.status(400).json({error:'Could not update revision progress'})}});
+
+app.get('/api/admin/intelligence',auth,admin,async(req,res)=>{try{
+  const [q,u,a,s]=await Promise.all([
+    pool.query(`SELECT COUNT(*)::int total,COUNT(*) FILTER(WHERE difficulty IS NULL OR difficulty='')::int missing_difficulty,COUNT(*) FILTER(WHERE topic IS NULL OR topic='')::int missing_topic,COUNT(*) FILTER(WHERE answer IS NULL)::int missing_answer FROM questions`),
+    pool.query(`SELECT COUNT(*) FILTER(WHERE role='student')::int students,COUNT(*) FILTER(WHERE role='student' AND status='active')::int active FROM users`),
+    pool.query(`SELECT COUNT(*)::int attempts,COALESCE(AVG(accuracy),0)::numeric accuracy FROM test_attempts`),
+    pool.query(`SELECT COALESCE(subject,'Unclassified') subject,COUNT(*)::int count FROM questions GROUP BY COALESCE(subject,'Unclassified') ORDER BY count DESC LIMIT 12`)
+  ]);res.json({questions:q.rows[0],users:u.rows[0],attempts:a.rows[0],subjects:s.rows})
+}catch(e){res.status(500).json({error:'Admin intelligence unavailable'})}});
+
 app.get('/api/support/tickets',auth,async(req,res)=>{try{
   const q=await pool.query(`SELECT t.id,t.subject,t.status,t.created_at,t.updated_at,t.last_message_at,(SELECT COUNT(*)::int FROM support_messages m WHERE m.thread_id=t.id) message_count,(SELECT message FROM support_messages m WHERE m.thread_id=t.id ORDER BY m.created_at DESC LIMIT 1) last_message FROM support_threads t WHERE t.user_id=$1 ORDER BY t.updated_at DESC`,[req.user.id]);
   res.json({tickets:q.rows});
@@ -773,6 +820,10 @@ async function initializeDatabase(){
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS uq_support_thread_user ON support_threads(user_id)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_support_threads_status_time ON support_threads(status,last_message_at DESC)');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_support_messages_thread_time ON support_messages(thread_id,created_at ASC)');
+  // v4.7 metadata columns and analytics indexes; additive and backward-compatible.
+  for (const [table,col,type] of [['questions','quality_score','NUMERIC(5,2)'],['questions','concept_tag','TEXT'],['questions','pyq_frequency','INTEGER DEFAULT 0'],['questions','learning_objective','TEXT']]) await addColumn(table,col,type);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_questions_intelligence ON questions(subject,topic,difficulty)');
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_revision_status_due ON revision_items(user_id,revision_status,next_revision_date)');
   console.log('Database schema initialized/verified');
 }
 app.listen(port,async()=>{
