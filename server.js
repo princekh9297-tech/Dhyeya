@@ -210,7 +210,7 @@ function splitImportedBilingual(value,label='text'){
   const i=s.search(/[\u0900-\u097F]/);
   return i>=0?{en:s.slice(0,i),hi:s.slice(i)}:{en:s,hi:''};
 }
-const BPSC_SUBJECTS=['General Science','Bihar Special','Modern Indian History','Ancient Indian History','Medieval Indian History','Indian Polity','Geography','Indian Economy'];
+const BPSC_SUBJECTS=['General Science','Bihar Special','Modern Indian History','Ancient Indian History','Medieval Indian History','Indian Polity','Geography','Indian Economy','Current Affairs'];
 
 const AI_MODEL=process.env.GEMINI_MODEL||'gemini-3.5-flash-lite';
 const AI_BATCH_SIZE=Math.max(5,Math.min(50,Number(process.env.AI_BATCH_SIZE||process.env.AI_BATCH_SIZE||50)));
@@ -244,7 +244,8 @@ async function classifyBpscBatch(batch){
     'Medieval Indian History':'Delhi Sultanate, regional medieval kingdoms, Vijayanagara/Bahmani, Mughals, Marathas, Bhakti-Sufi traditions and other medieval-period topics.',
     'Indian Polity':'Constitution, Articles, schedules, rights/duties, Parliament, President, judiciary, elections, constitutional/statutory bodies, federalism, local government and governance structure.',
     'Geography':'Physical, human, economic and Indian geography: landforms, climate, rivers, soils, resources, agriculture, population, maps and spatial relationships.',
-    'Indian Economy':'Macroeconomics, banking, monetary/fiscal policy, taxation, budget, GDP, inflation, poverty, unemployment, public finance, external sector and Indian economic institutions.'
+    'Indian Economy':'Macroeconomics, banking, monetary/fiscal policy, taxation, budget, GDP, inflation, poverty, unemployment, public finance, external sector and Indian economic institutions.',
+    'Current Affairs':'Recent national and international events, appointments, awards, reports, schemes, sports, science/technology developments, summits, government initiatives and other time-bound BPSC-relevant current events.'
   };
   const prompt=`You are DHYEYA's BPSC PYQ subject-classification engine. Classify every supplied question into EXACTLY ONE of these eight subjects and never invent another label. Use the full question and options, not keywords alone. Bihar Special wins only when the question is specifically about Bihar; a question merely mentioning a Bihar example is not automatically Bihar Special. For history, identify the historical period rather than using a generic History label. If two subjects overlap, choose the subject that best matches the question's primary knowledge being tested. Do not solve the question. Return exactly one result per input id, preserving ids. confidence must be between 0 and 1. If uncertain, lower confidence rather than invent certainty. For answer_check, compare the supplied answer with the question/options only when an answer exists; never invent or change the answer. If the answer appears inconsistent, use review. Infer exam_year and exam_name only when explicitly supported by supplied metadata/source/text; otherwise omit them. Subject definitions: ${Object.entries(subjectDefinitions).map(([k,v])=>k+': '+v).join('\n')}\nINPUT JSON:\n${JSON.stringify(payload)}`;
   let lastError=null;
@@ -336,6 +337,104 @@ function normalizeImportedQuestion(q,index){
   if(raw.explanation_hi!==undefined&&raw.explanation_hi!==null&&String(raw.explanation_hi).trim()!=='')throw new Error(`Row ${index}: Hindi explanation field is not accepted. Upload English only.`);
   const explanation_en=rawExplanation?normalizeSourceText(rawExplanation,`Row ${index} explanation_en`):null;
   return {id,subject:raw.subject==null?null:normalizeSourceText(raw.subject,`Row ${index} subject`),topic:raw.topic==null?null:normalizeSourceText(raw.topic,`Row ${index} topic`),subtopic:raw.subtopic==null?null:normalizeSourceText(raw.subtopic,`Row ${index} subtopic`),year:raw.year?Number(raw.year):null,language:'english',question_en,question_hi:null,options,answer,explanation_en,explanation_hi:null,difficulty:raw.difficulty==null?null:normalizeSourceText(raw.difficulty,`Row ${index} difficulty`),source:raw.source==null?'Admin English Question Bank Import':normalizeSourceText(raw.source,`Row ${index} source`),metadata};
+}
+
+// DHYEYA 4.8.1 — source-package sync layer.
+// Additive by default: existing questions are NEVER overwritten or deleted.
+const PREMIUM_SUBJECT_MAP={
+  'polity':'Indian Polity','indian polity':'Indian Polity','constitution':'Indian Polity',
+  'physics':'General Science','chemistry':'General Science','biology':'General Science','science':'General Science','general science':'General Science',
+  'bihar':'Bihar Special','bihar special':'Bihar Special',
+  'modern history':'Modern Indian History','modern indian history':'Modern Indian History',
+  'ancient history':'Ancient Indian History','ancient indian history':'Ancient Indian History',
+  'medieval history':'Medieval Indian History','medieval indian history':'Medieval Indian History',
+  'geography':'Geography','indian and world geography':'Geography','indian geography':'Geography',
+  'economy':'Indian Economy','indian economy':'Indian Economy'
+};
+function mapPremiumSubject(value){
+  const k=String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
+  return PREMIUM_SUBJECT_MAP[k]||null;
+}
+function normalizePremiumPackage(pkg){
+  const raw=Array.isArray(pkg)?{questions:pkg}:pkg;
+  const isSpeedy=Array.isArray(raw?.chapters)&&!Array.isArray(raw?.questions);
+  const packageId=isSpeedy?'speedy-current-affairs-2026':String(raw?.package_id||raw?.package_type||raw?.generated_from||'premium-question-package');
+  const source=raw?.source?.file||raw?.generated_from||raw?.sourceFile||null;
+  const input=isSpeedy?raw.chapters.flatMap(ch=>(ch.questions||[]).map(q=>({...q,__chapter:ch}))):(raw?.questions||[]);
+  if(!input.length)throw new Error('Premium JSON package contains no questions.');
+  const out=[],held=[];
+  for(let i=0;i<input.length;i++){
+    const x=input[i]||{};
+    try{
+      const chapter=x.__chapter||{};
+      const originalId=String(x.question_id||x.id||'').trim();
+      if(!originalId)throw new Error('Missing question id');
+      const syncKey=String(x?._sync?.sourceKey||'').trim() || `${packageId}::${chapter.id||'root'}::${originalId}`;
+      const id=isSpeedy?`CA-${String(chapter.id||'00').padStart(2,'0')}-${originalId}`:originalId;
+      const q=normalizeSourceText(isSpeedy?(x.q??''):(x.question??x.question_en??''),`Question ${id} question`);
+      if(!q.trim())throw new Error('Empty question');
+      const sourceSubject=isSpeedy?'Current Affairs':String(x.source_subject||x.subject||'').trim();
+      const subject=isSpeedy?'Current Affairs':mapPremiumSubject(sourceSubject);
+      if(!subject)throw new Error(`Unmapped subject: ${sourceSubject||'blank'}`);
+      const rawOpts=isSpeedy?(x.opts||[]):(x.options||{});
+      const options=Array.isArray(rawOpts)
+        ? rawOpts.map(v=>normalizeSourceText(typeof v==='object'?(v.en??v.text??v.label??''):v,`Question ${id} option`)).filter(v=>String(v||'').trim()!=='')
+        : ['A','B','C','D','E'].map(k=>rawOpts[k]).filter(v=>v!==undefined&&v!==null&&String(v).trim()!=='').map(v=>normalizeSourceText(v,`Question ${id} option`));
+      const rawOptsHi=isSpeedy?(x.hiopts||[]):[];
+      const optionsHi=Array.isArray(rawOptsHi)?rawOptsHi.map(v=>normalizeSourceText(v,`Question ${id} Hindi option`)).filter(v=>String(v||'').trim()!==''):[];
+      if(options.length<2)throw new Error(`Only ${options.length} usable options`);
+      const rawAnswer=isSpeedy?x.ans:(x.answer??'');
+      const answer=typeof rawAnswer==='number'&&Number.isInteger(rawAnswer)?rawAnswer:(/^[A-E]$/i.test(String(rawAnswer).trim())?({A:0,B:1,C:2,D:3,E:4}[String(rawAnswer).trim().toUpperCase()]):null);
+      if(answer===null||answer<0||answer>=options.length)throw new Error(`Answer ${String(rawAnswer)} does not map to an available option`);
+      const explanation=normalizeSourceText(isSpeedy?(x.exp??''):(x.explanation??x.explanation_en??''),`Question ${id} explanation`);
+      const explanationHi=isSpeedy&&x.hiexp?normalizeSourceText(x.hiexp,`Question ${id} Hindi explanation`):null;
+      const questionHi=isSpeedy&&x.hi?normalizeSourceText(x.hi,`Question ${id} Hindi question`):(x.question_hi?normalizeSourceText(x.question_hi,`Question ${id} Hindi question`):null);
+      const contentHash=String(x.content_hash||x._sync?.contentHash||crypto.createHash('sha256').update([q,JSON.stringify(options),String(answer),explanation].join('\n')).digest('hex'));
+      const metadata={
+        ...(x.metadata&&typeof x.metadata==='object'?x.metadata:{}),
+        sync_source:packageId,
+        sync_source_key:syncKey,
+        sync_original_question_id:originalId,
+        sync_schema_version:String(raw.schema_version||raw.schemaVersion||'1.0'),
+        source_subject:sourceSubject||null,
+        source_chapter_id:chapter.id||null,
+        source_chapter_name:chapter.name||chapter.chapterNameEn||null,
+        source_topic:x.topic||null,
+        source_page:x.source_page??null,
+        source_file:x.source_file||source,
+        source_book:x.source_book||raw?.source?.title||null,
+        exam_tags:Array.isArray(x.exam_tags)?x.exam_tags:[],
+        content_hash:contentHash,
+        source_validation:x.validation||null,
+        raw_source_block:x.raw_source_block||null,
+        source_options_hi:optionsHi,
+        sync_mode:'additive'
+      };
+      out.push({id,subject,topic:x.topic||chapter.name||null,subtopic:x.subtopic??null,year:x.year?Number(x.year):(isSpeedy?2026:null),language:isSpeedy?'bilingual':'english',question_en:q,question_hi:questionHi,options,options_hi:optionsHi,answer,explanation_en:explanation||null,explanation_hi:explanationHi,difficulty:x.difficulty??null,source:x.source_book||x.source_file||source||'Premium Question Package',metadata});
+    }catch(e){held.push({index:i+1,question_id:x.question_id||x.id||null,reason:e.message||'Invalid premium question',payload:x});}
+  }
+  return {packageId,questions:out,held,total:input.length,source,isSpeedy};
+}
+async function inspectPremiumPackage(pkg){
+  const p=normalizePremiumPackage(pkg);
+  const ids=p.questions.map(q=>q.id), texts=p.questions.map(q=>String(q.question_en).trim().toLowerCase().replace(/\s+/g,' ')), syncKeys=p.questions.map(q=>String(q.metadata?.sync_source_key||'')), hashes=p.questions.map(q=>String(q.metadata?.content_hash||''));
+  let rows=[];
+  if(ids.length){
+    rows=(await pool.query(`SELECT id,question_en,metadata FROM questions WHERE id=ANY($1::text[]) OR lower(regexp_replace(trim(question_en),'\\s+',' ','g'))=ANY($2::text[]) OR metadata->>'sync_source_key'=ANY($3::text[]) OR metadata->>'content_hash'=ANY($4::text[])`,[ids,texts,syncKeys,hashes])).rows;
+  }
+  const byId=new Set(rows.map(r=>String(r.id)));
+  const byText=new Set(rows.map(r=>String(r.question_en||'').trim().toLowerCase().replace(/\s+/g,' ')));
+  const byKey=new Set(rows.map(r=>String(r.metadata?.sync_source_key||'')));
+  const byHash=new Set(rows.map(r=>String(r.metadata?.content_hash||'')));
+  const subject_counts={}; let duplicates=0,conflicts=0;
+  const candidates=p.questions.map(q=>{
+    const t=String(q.question_en).trim().toLowerCase().replace(/\s+/g,' '), k=String(q.metadata?.sync_source_key||''), h=String(q.metadata?.content_hash||'');
+    const dup=byId.has(q.id)||byText.has(t)||byKey.has(k)||byHash.has(h);
+    if(dup)duplicates++;
+    subject_counts[q.subject]=(subject_counts[q.subject]||0)+1;
+    return {...q,metadata:{...(q.metadata||{}),sync_existing:dup}};
+  });
+  return {packageId:p.packageId,total:p.total,valid:candidates.length,held:p.held,duplicates,conflicts,subject_counts,questions:candidates,source:p.source};
 }
 function normalizeImportBatch(input){
   const normalized=[],errors=[];const seen=new Set();
@@ -611,6 +710,44 @@ app.post('/api/admin/questions/classify-preview',auth,admin,async(req,res)=>{
     res.json({ok:true,total:out.length,questions:out,model:AI_MODEL,batch_size:AI_BATCH_SIZE});
   }catch(e){res.status(400).json({error:e.message||'BPSC classification failed.'})}
 });
+
+app.post('/api/admin/questions/premium-sync/preview',auth,admin,async(req,res)=>{
+  try{
+    const pkg=req.body?.package??req.body;
+    const d=await inspectPremiumPackage(pkg);
+    res.json({ok:true,packageId:d.packageId,total:d.total,valid:d.valid,held:d.held.length,duplicates:d.duplicates,subject_counts:d.subject_counts,source:d.source,held_items:d.held.slice(0,50),questions:d.questions.map(q=>({id:q.id,subject:q.subject,question_en:q.question_en,answer:q.answer,options:q.options,existing:q.metadata?.sync_existing,source_page:q.metadata?.source_page}))});
+  }catch(e){res.status(400).json({ok:false,error:e.message||'Premium package preview failed.'})}
+});
+app.post('/api/admin/questions/premium-sync/import',auth,admin,async(req,res)=>{
+  const client=await pool.connect();
+  try{
+    const pkg=req.body?.package??req.body;
+    const d=await inspectPremiumPackage(pkg);
+    const importable=d.questions.filter(q=>!q.metadata?.sync_existing);
+    await client.query('BEGIN');
+    let inserted=0,skipped=0;
+    for(const q of importable){
+      const exists=(await client.query(`SELECT id FROM questions WHERE id=$1 OR lower(regexp_replace(trim(question_en),'\\s+',' ','g'))=$2 OR metadata->>'sync_source_key'=$3 OR metadata->>'content_hash'=$4 LIMIT 1`,[q.id,String(q.question_en).trim().toLowerCase().replace(/\s+/g,' '),String(q.metadata?.sync_source_key||''),String(q.metadata?.content_hash||'')])).rows[0];
+      if(exists){skipped++;continue;}
+      await client.query(`INSERT INTO questions(id,subject,topic,subtopic,year,language,question_en,question_hi,options,options_hi,answer,explanation_en,explanation_hi,difficulty,source,metadata)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[q.id,q.subject,q.topic,q.subtopic,q.year,q.language,q.question_en,q.question_hi,JSON.stringify(q.options||[]),JSON.stringify(q.options_hi||[]),q.answer,q.explanation_en,q.explanation_hi,q.difficulty,q.source,JSON.stringify(q.metadata||{})]);
+      inserted++;
+    }
+    for(const h of d.held){
+      await client.query(`INSERT INTO question_ingestion_quarantine(package_id,source_key,question_id,reason,payload)
+        VALUES($1,$2,$3,$4,$5) ON CONFLICT(package_id,source_key) DO NOTHING`,[d.packageId,`${d.packageId}::${h.question_id||h.index}`,h.question_id||null,h.reason,JSON.stringify(h.payload||{})]);
+    }
+    await client.query('COMMIT');
+    await audit(req.user,'question_package_sync',null,{package_id:d.packageId,total:d.total,valid:d.valid,inserted,skipped_duplicates:skipped,quarantined:d.held.length,subject_counts:d.subject_counts,mode:'additive'});
+    res.json({ok:true,packageId:d.packageId,total:d.total,valid:d.valid,inserted,skipped_duplicates:skipped,quarantined:d.held.length,subject_counts:d.subject_counts,mode:'additive'});
+  }catch(e){await client.query('ROLLBACK');res.status(400).json({ok:false,error:e.message||'Premium package import failed.'})}finally{client.release()}
+});
+app.get('/api/admin/questions/quarantine',auth,admin,async(req,res)=>{
+  try{
+    const r=await pool.query(`SELECT id,package_id,source_key,question_id,reason,created_at FROM question_ingestion_quarantine ORDER BY created_at DESC LIMIT 200`);
+    res.json({ok:true,items:r.rows});
+  }catch(e){res.status(500).json({ok:false,error:'Unable to load ingestion quarantine.'})}
+});
 app.post('/api/admin/questions/parse-file',auth,admin,upload.single('file'),async(req,res)=>{
   try{
     if(!req.file)return res.status(400).json({error:'No file uploaded.'});
@@ -808,6 +945,9 @@ async function initializeDatabase(){
   const qmap=Object.fromEntries(qcols.rows.map(r=>[r.column_name,r]));
   for(const c of ['question_en','question_hi','explanation_en','explanation_hi'])if(qmap[c]&&!['text','character varying'].includes(qmap[c].data_type))throw new Error(`questions.${c} must be TEXT/VARCHAR; found ${qmap[c].data_type}`);
   if(qmap.options&&qmap.options.udt_name!=='jsonb')throw new Error(`questions.options must be JSONB; found ${qmap.options.data_type}`);
+  await pool.query("ALTER TABLE questions ADD COLUMN IF NOT EXISTS options_hi JSONB NOT NULL DEFAULT '[]'::jsonb");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_questions_sync_key ON questions((metadata->>'sync_source_key')) WHERE metadata ? 'sync_source_key'");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_questions_content_hash ON questions((metadata->>'content_hash')) WHERE metadata ? 'content_hash'");
 
   // Production compatibility migrations. Older DHYEYA databases may already
   // contain these tables with an earlier column set. CREATE TABLE IF NOT EXISTS

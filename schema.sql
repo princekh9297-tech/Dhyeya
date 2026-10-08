@@ -58,18 +58,34 @@ CREATE INDEX IF NOT EXISTS idx_tests_library ON tests(institution,year DESC,sequ
 CREATE TABLE IF NOT EXISTS questions (
   id TEXT PRIMARY KEY,
   subject TEXT, topic TEXT, subtopic TEXT, year INTEGER, language TEXT DEFAULT 'bilingual',
-  question_en TEXT NOT NULL, question_hi TEXT, options JSONB NOT NULL DEFAULT '[]'::jsonb,
+  question_en TEXT NOT NULL, question_hi TEXT, options JSONB NOT NULL DEFAULT '[]'::jsonb, options_hi JSONB NOT NULL DEFAULT '[]'::jsonb,
   answer INTEGER, explanation_en TEXT, explanation_hi TEXT, difficulty TEXT,
   source TEXT, metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS options_hi JSONB NOT NULL DEFAULT '[]'::jsonb;
 CREATE INDEX IF NOT EXISTS idx_questions_subject_topic ON questions(subject,topic);
+CREATE INDEX IF NOT EXISTS idx_questions_sync_key ON questions((metadata->>'sync_source_key')) WHERE metadata ? 'sync_source_key';
+CREATE INDEX IF NOT EXISTS idx_questions_content_hash ON questions((metadata->>'content_hash')) WHERE metadata ? 'content_hash';
 CREATE INDEX IF NOT EXISTS idx_questions_year ON questions(year DESC);
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS quality_score NUMERIC(5,2);
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS concept_tag TEXT;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS pyq_frequency INTEGER DEFAULT 0;
 ALTER TABLE questions ADD COLUMN IF NOT EXISTS learning_objective TEXT;
 CREATE INDEX IF NOT EXISTS idx_questions_intelligence ON questions(subject,topic,difficulty);
+CREATE TABLE IF NOT EXISTS question_ingestion_quarantine (
+  id BIGSERIAL PRIMARY KEY,
+  package_id TEXT NOT NULL,
+  source_key TEXT NOT NULL,
+  question_id TEXT,
+  reason TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_question_ingestion_quarantine_source ON question_ingestion_quarantine(package_id,source_key);
+CREATE INDEX IF NOT EXISTS idx_question_ingestion_quarantine_package ON question_ingestion_quarantine(package_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_question_ingestion_quarantine_question ON question_ingestion_quarantine(question_id);
+
 CREATE INDEX IF NOT EXISTS idx_revision_status_due ON revision_items(user_id,revision_status,next_revision_date);
 
 CREATE TABLE IF NOT EXISTS test_questions (
