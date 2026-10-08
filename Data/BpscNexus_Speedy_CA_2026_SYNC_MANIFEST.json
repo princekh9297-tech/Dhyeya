@@ -1,0 +1,198 @@
+{
+  "sourceFile": "BpscNexus_Speedy_Current_Affairs_2026_FINAL_ENGLISH.html",
+  "chapters": [
+    {
+      "id": "01",
+      "name": "Who, What, Where?",
+      "count": 302
+    },
+    {
+      "id": "02",
+      "name": "Modi Cabinet 3.0",
+      "count": 28
+    },
+    {
+      "id": "03",
+      "name": "State Capitals, Governors & Chief Ministers",
+      "count": 34
+    },
+    {
+      "id": "04",
+      "name": "High Courts of India",
+      "count": 22
+    },
+    {
+      "id": "05",
+      "name": "Countries of the World: Who, What, Where",
+      "count": 56
+    },
+    {
+      "id": "06",
+      "name": "First in India and the World: 2025–26",
+      "count": 90
+    },
+    {
+      "id": "07",
+      "name": "Major MoUs Signed: 2025–26",
+      "count": 20
+    },
+    {
+      "id": "08",
+      "name": "Major Mobile Apps & Portals: 2025–26",
+      "count": 27
+    },
+    {
+      "id": "09",
+      "name": "Brand Ambassadors",
+      "count": 26
+    },
+    {
+      "id": "10",
+      "name": "Festivals 2025–26",
+      "count": 14
+    },
+    {
+      "id": "11",
+      "name": "Joint Military Exercises: 2025–26",
+      "count": 30
+    },
+    {
+      "id": "12",
+      "name": "Assembly Elections: 2025–26",
+      "count": 29
+    },
+    {
+      "id": "13",
+      "name": "International Organisations: At a Glance",
+      "count": 801
+    },
+    {
+      "id": "14",
+      "name": "International Conferences: 2025–26",
+      "count": 30
+    },
+    {
+      "id": "15",
+      "name": "National Conferences: 2025–26",
+      "count": 27
+    },
+    {
+      "id": "16",
+      "name": "Major Operations: 2025–26",
+      "count": 29
+    },
+    {
+      "id": "17",
+      "name": "Major Reports of Government of India",
+      "count": 110
+    },
+    {
+      "id": "18",
+      "name": "Index / Reports: 2025–26",
+      "count": 110
+    },
+    {
+      "id": "19",
+      "name": "Central Government Schemes 2014–26",
+      "count": 40
+    },
+    {
+      "id": "20",
+      "name": "Economic Survey: 2025–26",
+      "count": 50
+    },
+    {
+      "id": "21",
+      "name": "Union Budget: 2026–27",
+      "count": 8
+    },
+    {
+      "id": "22",
+      "name": "State Government Schemes: 2023–26",
+      "count": 4
+    },
+    {
+      "id": "23",
+      "name": "Economic Scenario",
+      "count": 50
+    },
+    {
+      "id": "24",
+      "name": "Science & Technology",
+      "count": 60
+    },
+    {
+      "id": "25",
+      "name": "Defence & Security",
+      "count": 59
+    },
+    {
+      "id": "26",
+      "name": "Space Technology",
+      "count": 29
+    },
+    {
+      "id": "27",
+      "name": "Environment & Ecology",
+      "count": 75
+    },
+    {
+      "id": "28",
+      "name": "National Sports Awards: 2024–25",
+      "count": 25
+    },
+    {
+      "id": "29",
+      "name": "National / International Awards",
+      "count": 25
+    },
+    {
+      "id": "30",
+      "name": "Sports Panorama",
+      "count": 100
+    },
+    {
+      "id": "31",
+      "name": "Books & Authors",
+      "count": 40
+    },
+    {
+      "id": "32",
+      "name": "Important Days",
+      "count": 10
+    },
+    {
+      "id": "33",
+      "name": "Important Days and Themes",
+      "count": 10
+    },
+    {
+      "id": "34",
+      "name": "Important Conferences and Summits",
+      "count": 30
+    },
+    {
+      "id": "35",
+      "name": "Latest Abbreviations",
+      "count": 10
+    },
+    {
+      "id": "36",
+      "name": "Current Affairs: Miscellaneous",
+      "count": 63
+    },
+    {
+      "id": "37",
+      "name": "Current Affairs: One-Liner",
+      "count": 120
+    },
+    {
+      "id": "38",
+      "name": "Current Affairs: MCQs",
+      "count": 1146
+    }
+  ],
+  "totalQuestions": 3739,
+  "identityKey": "chapter.id::question.id",
+  "note": "Question IDs repeat across chapters; composite sourceKey is required for collision-free syncing."
+}
