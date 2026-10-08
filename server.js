@@ -471,11 +471,107 @@ function parseTxtQuestionBlock(block,index){
 function parseTxtQuestions(text){
   const blocks=splitTxtQuestionBlocks(text); const questions=[]; const held=[]; blocks.forEach((b,i)=>{try{const q=parseTxtQuestionBlock(b,i+1);if(q)questions.push(q);else held.push({index:i+1,raw:b.slice(0,2000)})}catch(e){held.push({index:i+1,raw:b.slice(0,2000),error:e.message})}}); return {questions,held,total_blocks:blocks.length,text_chars:String(text||'').length};
 }
+
+// DHYEYA 4.8 — Premium HTML Question Ingestion Studio
+// Content-first extraction: only question, options, answer, explanation and taxonomy metadata are imported.
+const HTML_INGEST_VERSION='4.8.0';
+const SUBJECT_ALIASES=new Map([
+  ['science','General Science'],['general science','General Science'],['general science & technology','General Science'],['science & technology','General Science'],['science and technology','General Science'],['physics','General Science'],['chemistry','General Science'],['biology','General Science'],
+  ['bihar','Bihar Special'],['bihar special','Bihar Special'],['bihar gk','Bihar Special'],['bihar general knowledge','Bihar Special'],
+  ['modern history','Modern Indian History'],['modern indian history','Modern Indian History'],['ancient history','Ancient Indian History'],['ancient indian history','Ancient Indian History'],['medieval history','Medieval Indian History'],['medieval indian history','Medieval Indian History'],
+  ['polity','Indian Polity'],['indian polity','Indian Polity'],['constitution','Indian Polity'],['geography','Geography'],['indian geography','Geography'],['economy','Indian Economy'],['indian economy','Indian Economy'],['indian economics','Indian Economy'],['current affairs','Current Affairs']
+]);
+function canonicalSubject(value){
+  const x=String(value||'').trim().toLowerCase().replace(/&amp;/g,'&').replace(/\s+/g,' ');
+  if(SUBJECT_ALIASES.has(x))return SUBJECT_ALIASES.get(x);
+  for(const [k,v] of SUBJECT_ALIASES) if(x.includes(k)) return v;
+  return null;
+}
+function htmlDecode(s){return String(s||'').replace(/&nbsp;/gi,' ').replace(/&#39;|&apos;/gi,"'").replace(/&quot;/gi,'"').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(Number(n))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCharCode(parseInt(n,16)));}
+function htmlToText(html){
+  return htmlDecode(String(html||'')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'\n').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,'\n').replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi,'\n')
+    .replace(/<br\s*\/?>/gi,'\n').replace(/<\/p>|<\/div>|<\/li>|<\/tr>|<\/h[1-6]>/gi,'\n').replace(/<[^>]+>/g,' ')
+    .replace(/[\u00a0\t]+/g,' ').replace(/\n[ \t]+/g,'\n').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim());
+}
+function detectHtmlQuestionBlocks(text){
+  const lines=String(text||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  const starts=[]; const re=/^(?:question\s*)?(\d{1,6})[.)\-:]\s*(.+)$/i;
+  lines.forEach((line,i)=>{if(re.test(line)&&!/^\d{4}[.)\-:]\s/.test(line))starts.push(i)});
+  const blocks=[]; for(let i=0;i<starts.length;i++){const a=starts[i],b=i+1<starts.length?starts[i+1]:lines.length;blocks.push({index:i+1,startLine:a,endLine:b,raw:lines.slice(a,b).join('\n')})} return blocks;
+}
+function cleanHtmlOption(s){return String(s||'').replace(/^\s*(?:[A-E]|[1-5])[.)\-:]\s*/i,'').replace(/\s+/g,' ').trim();}
+function classifyHtmlQuestion(question,sourceSubject){
+  const explicit=canonicalSubject(sourceSubject); if(explicit)return {subject:explicit,confidence:1,method:'source-category'};
+  const t=String(question.question_en||'').toLowerCase();
+  const scores={ 'General Science':0,'Bihar Special':0,'Modern Indian History':0,'Ancient Indian History':0,'Medieval Indian History':0,'Indian Polity':0,'Geography':0,'Indian Economy':0,'Current Affairs':0 };
+  const add=(sub,words,weight=1)=>words.forEach(w=>{if(t.includes(w))scores[sub]+=weight});
+  add('General Science',['photosynthesis','cell','vitamin','protein','enzyme','disease','hormone','dna','rna','atom','molecule','acid','base','chemical','force','energy','motion','electricity','magnet','planet','satellite','gravity','radiation','genetics','organism','microbiology','physics','chemistry','biology'],3);
+  add('Bihar Special',['bihar','patna','gaya','nalanda','mithila','magadh','bodhgaya','vaishali','champaran','kosi','gandak','son','bihar government','bihar assembly','bihar budget','bihar economic survey'],4);
+  add('Modern Indian History',['east india company','british','indian national congress','inc','gandhi','nehru','subhas','subhash','quit india','civil disobedience','non cooperation','swadeshi','revolt of 1857','rowlatt','partition of bengal','cabinet mission','cripps','freedom movement'],3);
+  add('Ancient Indian History',['indus valley','harappan','vedic','mauryan','ashoka','gupta','mahajanapada','buddhism','jainism','sangam','upanishad','rigveda','pataliputra'],3);
+  add('Medieval Indian History',['delhi sultanate','mughal','akbar','babur','aurangzeb','sultanate','vijayanagara','bahmani','bhakti','sufi','mansabdari','maratha','shivaji'],3);
+  add('Indian Polity',['constitution','article','fundamental right','directive principles','president','prime minister','parliament','rajya sabha','lok sabha','supreme court','high court','election commission','cag','finance commission','federalism','panchayati raj','amendment','schedule'],3);
+  add('Geography',['river','mountain','plateau','climate','monsoon','soil','latitude','longitude','ocean','sea','delta','desert','agriculture','population','mineral','drainage','earthquake','volcano','map','forest'],2);
+  add('Indian Economy',['gdp','inflation','repo rate','reverse repo','rbi','monetary policy','fiscal policy','budget','tax','gst','banking','poverty','unemployment','balance of payments','current account','capital account','niti aayog','finance ministry'],3);
+  add('Current Affairs',['2026','2025','recently','latest','appointed','launched','award','summit','index','report','scheme','in news','current affairs'],1);
+  const ranked=Object.entries(scores).sort((a,b)=>b[1]-a[1]); const top=ranked[0],second=ranked[1];
+  if(!top||top[1]===0)return {subject:null,confidence:0,method:'unresolved'};
+  const confidence=Math.min(0.98,0.55+top[1]*0.035+Math.max(0,top[1]-second[1])*0.02);
+  return {subject:top[0],confidence:Number(confidence.toFixed(3)),method:'rule-engine'};
+}
+function parseHtmlQuestionBlock(block,index,sourceName,categoryHint){
+  const lines=String(block.raw||'').split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!lines.length)return null;
+  let first=lines.shift(); const qm=first.match(/^(?:question\s*)?(\d{1,6})[.)\-:]\s*(.*)$/i); if(!qm)return null;
+  let questionParts=[qm[2]], options=[], current=null, answer=null, explanation=[]; let inExplanation=false,subject=null,topic=null,year=null,difficulty=null,nextCategory=null;
+  const flush=()=>{if(current!==null){options.push(cleanHtmlOption(current));current=null}};
+  for(const raw of lines){
+    const line=raw.trim(); if(!line)continue; let m;
+    if((m=line.match(/^([A-E])[.)\-:]\s*(.*)$/i))){flush();current=m[2].trim();inExplanation=false;continue}
+    if((m=line.match(/^(?:answer|ans|correct\s*answer|correct)\s*[:\-]?\s*([A-E1-5])\b/i))){flush();const a=m[1].toUpperCase();answer=/[1-5]/.test(a)?String.fromCharCode(64+Number(a)):a;answer=answer.charCodeAt(0)-65;inExplanation=false;continue}
+    if((m=line.match(/^(?:explanation|solution|rationale)\s*[:\-]?\s*(.*)$/i))){flush();inExplanation=true;if(m[1])explanation.push(m[1]);continue}
+    const bareCategory=canonicalSubject(line);
+    if(bareCategory){if(inExplanation||questionParts.length>1||options.length){nextCategory=bareCategory;continue}subject=bareCategory;inExplanation=false;continue}
+    if((m=line.match(/^(?:subject|section|category|paper)\s*[:\-]\s*(.*)$/i))){subject=m[1].trim();inExplanation=false;continue}
+    if((m=line.match(/^topic\s*[:\-]\s*(.*)$/i))){topic=m[1].trim();inExplanation=false;continue}
+    if((m=line.match(/^year\s*[:\-]\s*(\d{4})\b/i))){year=Number(m[1]);inExplanation=false;continue}
+    if((m=line.match(/^difficulty\s*[:\-]\s*(.*)$/i))){difficulty=m[1].trim();inExplanation=false;continue}
+    if(inExplanation){explanation.push(line);continue}
+    if(current!==null)current+=' '+line;else questionParts.push(line);
+  }
+  flush();
+  if(options.length<2)return null;
+  const question=questionParts.join(' ').replace(/\s+/g,' ').trim(); if(!question)return null;
+  const inferred=classifyHtmlQuestion({question_en:question},subject||categoryHint); const finalSubject=inferred.subject;
+  const fp=crypto.createHash('sha256').update([question.toLowerCase().replace(/\s+/g,' '),JSON.stringify(options).toLowerCase()].join('\n')).digest('hex').slice(0,24);
+  return {id:`HTML-${crypto.createHash('sha1').update(`${sourceName}|${index}|${fp}`).digest('hex').slice(0,16)}`,subject:finalSubject,topic:topic||null,subtopic:null,year,language:'english',question_en:question,question_hi:null,options,answer:answer==null?null:answer,explanation_en:explanation.join(' ').replace(/\s+/g,' ').trim()||null,explanation_hi:null,difficulty:difficulty||null,source:`HTML Import · ${sourceName}`,metadata:{import_parser:'html-ingestion-studio',ingest_version:HTML_INGEST_VERSION,source_category:subject||categoryHint||null,next_category:nextCategory||null,classification_engine:inferred.method,classification_confidence:inferred.confidence,classification_reviewed:false,content_fingerprint:fp,parse_confidence:(answer!=null&&explanation.length&&options.length>=2)?'high':'review',question_number:Number(qm[1])}};
+}
+function parseHtmlQuestions(buffer,sourceName){
+  const raw=buffer.toString('utf8').replace(/^\uFEFF/,'');
+  if(!/<html|<body|<div|<section|<article|<main|<p|<ol|<ul/i.test(raw))throw new Error('HTML parser could not identify an HTML document.');
+  const text=htmlToText(raw); const blocks=detectHtmlQuestionBlocks(text); const questions=[],held=[];
+  let categoryHint=null, cursor=0;
+  const lines=text.split('\n').map(x=>x.trim()).filter(Boolean);
+  const knownHeaders=new Set([...BPSC_SUBJECTS,'History','Science','Polity','Geography','Economy','Bihar Special','Current Affairs','General Science']);
+  for(const b of blocks){
+    for(let i=Math.max(0,cursor);i<b.startLine;i++){
+      const c=canonicalSubject(lines[i])||(knownHeaders.has(lines[i])?lines[i]:null);
+      if(c)categoryHint=c;
+    }
+    cursor=b.startLine+1;
+    const q=parseHtmlQuestionBlock(b, b.index, sourceName, categoryHint); if(q){questions.push(q);if(q.metadata?.next_category)categoryHint=q.metadata.next_category;} else held.push({index:b.index,raw:b.raw.slice(0,2000),reason:'Could not reliably extract question/options/answer.'});
+  }
+  return {questions,held,total_blocks:blocks.length,text_chars:text.length,parser:'dhyeya-html-ingestion-4.8'};
+}
+function similarityKey(s){return String(s||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim()}
+
 async function parseUploadedFile(file){
   const name=String(file.originalname||'').toLowerCase();
   if(name.endsWith('.json')){const data=JSON.parse(file.buffer.toString('utf8'));return Array.isArray(data)?data:(Array.isArray(data.questions)?data.questions:[])}
   if(name.endsWith('.csv'))return csvRows(file.buffer.toString('utf8'));
   if(name.endsWith('.txt'))return parseTxtQuestions(file.buffer.toString('utf8'));
+  if(name.endsWith('.html')||name.endsWith('.htm')) return parseHtmlQuestions(file.buffer,file.originalname||'source.html');
   if(name.endsWith('.pdf')){
     const parsed=await pdfParse(file.buffer); const blocks=splitPdfBlocks(parsed.text); const out=[]; const held=[];
     blocks.forEach((b,i)=>{const q=parsePdfQuestionBlock(b,i+1);if(q)out.push(q);else held.push({index:i+1,raw:b.slice(0,2000)})});
@@ -543,10 +639,19 @@ app.post('/api/admin/questions/import',auth,admin,async(req,res)=>{
     if(input.length>50000)return res.status(400).json({error:'Maximum 50,000 questions per import.'});
     const batch=normalizeImportBatch(input);
     if(batch.errors.length)return res.status(422).json({ok:false,total:input.length,validation:{total:input.length,valid:batch.normalized.length,invalid:batch.errors.length,unicode_errors:batch.errors.filter(e=>/Unicode|mojibake|NUL|surrogate/i.test(e.error)).length,duplicate_ids:batch.errors.filter(e=>/Duplicate question ID/i.test(e.error)).length},errors:batch.errors});
-    const normalized=batch.normalized;
+    let normalized=batch.normalized;
     const test=req.body?.test&&typeof req.body.test==='object'?{...req.body.test}:{};
-    const result=await importQuestionsToDb(normalized,test,req.user);
-    res.json({ok:true,total:normalized.length,...result});
+    let skipped_existing=0;
+    if(req.body?.html_ingestion===true && normalized.length){
+      const texts=normalized.map(q=>String(q.question_en||'').trim().toLowerCase().replace(/\s+/g,' '));
+      const existingRows=await pool.query("SELECT id,question_en FROM questions WHERE lower(regexp_replace(trim(question_en),'\\s+',' ','g'))=ANY($1::text[])",[texts]);
+      const existingText=new Set(existingRows.rows.map(r=>String(r.question_en||'').trim().toLowerCase().replace(/\s+/g,' ')));
+      const before=normalized.length;
+      normalized=normalized.filter(q=>!existingText.has(String(q.question_en||'').trim().toLowerCase().replace(/\s+/g,' ')));
+      skipped_existing=before-normalized.length;
+    }
+    const result=normalized.length?await importQuestionsToDb(normalized,test,req.user):{inserted:0,updated:0,test_id:null,mapped:0,classified:0,subject_counts:{}};
+    res.json({ok:true,total:batch.normalized.length,imported:normalized.length,skipped_existing,...result});
   }catch(e){res.status(400).json({error:e.message||'Question import failed.'})}
 });
 app.get('/api/admin/questions/import-history',auth,admin,async(_req,res)=>{
