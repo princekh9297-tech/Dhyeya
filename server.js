@@ -718,28 +718,52 @@ app.post('/api/admin/questions/premium-sync/preview',auth,admin,async(req,res)=>
     res.json({ok:true,packageId:d.packageId,total:d.total,valid:d.valid,held:d.held.length,duplicates:d.duplicates,subject_counts:d.subject_counts,source:d.source,held_items:d.held.slice(0,50),questions:d.questions.map(q=>({id:q.id,subject:q.subject,question_en:q.question_en,answer:q.answer,options:q.options,existing:q.metadata?.sync_existing,source_page:q.metadata?.source_page}))});
   }catch(e){res.status(400).json({ok:false,error:e.message||'Premium package preview failed.'})}
 });
+function premiumTestConfig(d){
+  if(d.packageId==='speedy-current-affairs-2026') return {slug:'premium-speedy-current-affairs-2026',title:'Speedy Current Affairs 2026 — Premium Vault',institution:'BCW',category:'Current Affairs',year:2026,duration_seconds:7200,access_type:'premium',published:true};
+  return {slug:'premium-tarkash-annual-pyq-2026',title:'Tarkash Annual PYQ — Premium Vault',institution:'BCW',category:'BPSC PYQ Archive',year:2026,duration_seconds:7200,access_type:'premium',published:true};
+}
 app.post('/api/admin/questions/premium-sync/import',auth,admin,async(req,res)=>{
   const client=await pool.connect();
   try{
     const pkg=req.body?.package??req.body;
     const d=await inspectPremiumPackage(pkg);
-    const importable=d.questions.filter(q=>!q.metadata?.sync_existing);
+    const candidates=d.questions.filter(q=>!q.metadata?.sync_existing);
+    const payload=JSON.stringify(candidates);
     await client.query('BEGIN');
-    let inserted=0,skipped=0;
-    for(const q of importable){
-      const exists=(await client.query(`SELECT id FROM questions WHERE id=$1 OR lower(regexp_replace(trim(question_en),'\\s+',' ','g'))=$2 OR metadata->>'sync_source_key'=$3 OR metadata->>'content_hash'=$4 LIMIT 1`,[q.id,String(q.question_en).trim().toLowerCase().replace(/\s+/g,' '),String(q.metadata?.sync_source_key||''),String(q.metadata?.content_hash||'')])).rows[0];
-      if(exists){skipped++;continue;}
-      await client.query(`INSERT INTO questions(id,subject,topic,subtopic,year,language,question_en,question_hi,options,options_hi,answer,explanation_en,explanation_hi,difficulty,source,metadata)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[q.id,q.subject,q.topic,q.subtopic,q.year,q.language,q.question_en,q.question_hi,JSON.stringify(q.options||[]),JSON.stringify(q.options_hi||[]),q.answer,q.explanation_en,q.explanation_hi,q.difficulty,q.source,JSON.stringify(q.metadata||{})]);
-      inserted++;
-    }
+    const ins=await client.query(`
+      WITH incoming AS (
+        SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(
+          id text,subject text,topic text,subtopic text,year int,language text,
+          question_en text,question_hi text,options jsonb,options_hi jsonb,answer int,
+          explanation_en text,explanation_hi text,difficulty text,source text,metadata jsonb
+        )
+      ), inserted AS (
+        INSERT INTO questions(id,subject,topic,subtopic,year,language,question_en,question_hi,options,options_hi,answer,explanation_en,explanation_hi,difficulty,source,metadata)
+        SELECT i.id,i.subject,i.topic,i.subtopic,i.year,i.language,i.question_en,i.question_hi,i.options,i.options_hi,i.answer,i.explanation_en,i.explanation_hi,i.difficulty,i.source,i.metadata
+        FROM incoming i
+        WHERE NOT EXISTS (
+          SELECT 1 FROM questions q WHERE q.id=i.id
+            OR lower(regexp_replace(trim(q.question_en),'\\s+',' ','g'))=lower(regexp_replace(trim(i.question_en),'\\s+',' ','g'))
+            OR q.metadata->>'sync_source_key'=i.metadata->>'sync_source_key'
+            OR q.metadata->>'content_hash'=i.metadata->>'content_hash'
+        )
+        ON CONFLICT(id) DO NOTHING
+        RETURNING id
+      ) SELECT COUNT(*)::int AS inserted FROM inserted`,[payload]);
+    const inserted=Number(ins.rows[0]?.inserted||0);
+    const skipped=Math.max(0,candidates.length-inserted);
     for(const h of d.held){
-      await client.query(`INSERT INTO question_ingestion_quarantine(package_id,source_key,question_id,reason,payload)
-        VALUES($1,$2,$3,$4,$5) ON CONFLICT(package_id,source_key) DO NOTHING`,[d.packageId,`${d.packageId}::${h.question_id||h.index}`,h.question_id||null,h.reason,JSON.stringify(h.payload||{})]);
+      await client.query(`INSERT INTO question_ingestion_quarantine(package_id,source_key,question_id,reason,payload) VALUES($1,$2,$3,$4,$5) ON CONFLICT(package_id,source_key) DO NOTHING`,[d.packageId,`${d.packageId}::${h.question_id||h.index}`,h.question_id||null,h.reason,JSON.stringify(h.payload||{})]);
     }
+    const tc=premiumTestConfig(d);
+    const t=await client.query(`INSERT INTO tests(slug,title,institution,category,year,sequence_no,access_type,duration_seconds,published,metadata) VALUES($1,$2,$3,$4,$5,9999,$6,$7,$8,$9) ON CONFLICT(slug) DO UPDATE SET title=EXCLUDED.title,institution=EXCLUDED.institution,category=EXCLUDED.category,year=EXCLUDED.year,access_type=EXCLUDED.access_type,duration_seconds=EXCLUDED.duration_seconds,published=TRUE,updated_at=NOW() RETURNING id`,[tc.slug,tc.title,tc.institution,tc.category,tc.year,tc.access_type,tc.duration_seconds,tc.published,JSON.stringify({created_via:'premium_package_sync',package_id:d.packageId})]);
+    const testId=t.rows[0].id;
+    const mappedR=await client.query(`INSERT INTO test_questions(test_id,question_id,sort_order) SELECT $1,q.id,ROW_NUMBER() OVER (ORDER BY q.created_at,q.id)::int FROM questions q WHERE q.metadata->>'sync_source'=$2 ON CONFLICT(test_id,question_id) DO NOTHING`,[testId,d.packageId]);
+    const mapped=Number(mappedR.rowCount||0);
+    await client.query(`UPDATE tests SET question_count=(SELECT COUNT(*) FROM test_questions WHERE test_id=$1),updated_at=NOW() WHERE id=$1`,[testId]);
     await client.query('COMMIT');
-    await audit(req.user,'question_package_sync',null,{package_id:d.packageId,total:d.total,valid:d.valid,inserted,skipped_duplicates:skipped,quarantined:d.held.length,subject_counts:d.subject_counts,mode:'additive'});
-    res.json({ok:true,packageId:d.packageId,total:d.total,valid:d.valid,inserted,skipped_duplicates:skipped,quarantined:d.held.length,subject_counts:d.subject_counts,mode:'additive'});
+    await audit(req.user,'question_package_sync',null,{package_id:d.packageId,total:d.total,valid:d.questions.length,inserted,skipped_duplicates:skipped,quarantined:d.held.length,subject_counts:d.subject_counts,mode:'additive',test_id:testId,mapped});
+    res.json({ok:true,packageId:d.packageId,total:d.total,valid:d.questions.length,inserted,skipped_duplicates:skipped,quarantined:d.held.length,subject_counts:d.subject_counts,mode:'additive',test_id:testId,mapped});
   }catch(e){await client.query('ROLLBACK');res.status(400).json({ok:false,error:e.message||'Premium package import failed.'})}finally{client.release()}
 });
 app.get('/api/admin/questions/quarantine',auth,admin,async(req,res)=>{
